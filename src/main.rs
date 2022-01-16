@@ -2,23 +2,27 @@ use bevy::prelude::*;
 use bevy_inspector_egui::WorldInspectorPlugin;
 use rand::{thread_rng, Rng};
 
-#[derive(Debug)]
+#[derive(Component, Debug)]
 struct Hex {
     q: f32,
     r: f32,
 }
 
+#[derive(Component)]
 struct Head;
 
+#[derive(Component)]
 struct Tail;
 
+#[derive(Component)]
 struct Food;
 
+#[derive(Component)]
 struct InputHandler {
     action: Action,
 }
 
-#[derive(Debug)]
+#[derive(Component, Debug)]
 enum Action {
     Up,
     UpRight,
@@ -32,7 +36,7 @@ enum Action {
 }
 
 fn main() {
-    App::build()
+    App::new()
         .add_plugins(DefaultPlugins)
         .add_plugin(WorldInspectorPlugin::new())
         .add_startup_system(setup.system())
@@ -56,7 +60,6 @@ fn generate_map(x: isize) -> Vec<Hex> {
 fn setup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     let mut camera = OrthographicCameraBundle::new_2d();
     camera.transform.scale = Vec3::new(2.0, 2.0, 1.0);
@@ -66,14 +69,14 @@ fn setup(
     let texture_handle = asset_server.load_folder("HK-Heightend Sensory Input v2/HSI - Indigo/").unwrap();
     for hex in map {
         commands.spawn_bundle(SpriteBundle {
-            material: materials.add((texture_handle[thread_rng().gen_range(0..texture_handle.len())]).clone().typed().into()),
+            texture: texture_handle[thread_rng().gen_range(0..texture_handle.len())].clone().typed().into(),
             ..Default::default()
         }).insert(hex);
     }
 
     let texture_handle = asset_server.load("HK-Heightend Sensory Input v2/HSI - Icons/HSI - Icon Geometric Light/HSI_icon_123l.png");
     commands.spawn_bundle(SpriteBundle {
-        material: materials.add(texture_handle.into()),
+        texture: texture_handle,
         ..Default::default()
     })
     .insert(Hex { q: 0., r: 0. })
@@ -149,6 +152,5 @@ fn action_system(
         } else {
             input_handler.action = Action::None;
         }
-        println!("{:?}", input_handler.action);
     }
 }
