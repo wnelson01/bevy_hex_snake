@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use bevy_inspector_egui::{Inspectable, WorldInspectorPlugin, RegisterInspectable};
 use rand::{thread_rng, Rng};
+use bevy::input::keyboard::KeyboardInput;
 
 #[derive(Component, Inspectable)]
 struct Hex {
@@ -45,6 +46,7 @@ fn main() {
         .add_system(hex_to_pixel)
         .add_system(action_system)
         .add_system(head_movement)
+        .add_system(keyboard_events)
         .run();
 }
 
@@ -187,6 +189,23 @@ fn head_movement(
                 hex.r -= 1.;
             },
             Action::None => (),
+        }
+    }
+}
+
+fn keyboard_events(
+    mut key_evr: EventReader<KeyboardInput>,
+) {
+    use bevy::input::ElementState;
+
+    for ev in key_evr.iter() {
+        match ev.state {
+            ElementState::Pressed => {
+                println!("Key press: {:?} ({})", ev.key_code, ev.scan_code);
+            }
+            ElementState::Released => {
+                println!("Key release: {:?} ({})", ev.key_code, ev.scan_code);
+            }
         }
     }
 }
