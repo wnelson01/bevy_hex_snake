@@ -22,9 +22,10 @@ struct Food;
 #[derive(Component)]
 struct InputHandler {
     action: Action,
+    last_action: Action
 }
 
-#[derive(Component, Debug)]
+#[derive(Clone, Component, Copy, Debug, PartialEq)]
 enum Action {
     Up,
     UpRight,
@@ -35,6 +36,12 @@ enum Action {
     Left,
     UpLeft,
     None,
+}
+
+#[derive(Component)]
+struct InputQue {
+    que: Vec<Action>,
+    last_input: Action
 }
 
 fn main() {
@@ -86,7 +93,7 @@ fn setup(
     })
     .insert(Hex { q: 0., r: 0., z: 1. })
     .insert(Head)
-    .insert(InputHandler { action: Action::None });
+    .insert(InputHandler { action: Action::None, last_action: Action::None });
 }
 
 /// Convert hex to pixel
@@ -162,33 +169,36 @@ fn action_system(
 }
 
 fn head_movement(
-    mut query: Query<(&mut Hex, &InputHandler), With<Head>>
+    mut query: Query<(&mut Hex, &mut InputHandler), With<Head>>
 ) {
-    for (mut hex, input_handler) in query.iter_mut() {
-        match input_handler.action {
-            Action::Up => (),
-            Action::UpRight => {
-                hex.q += 1.;
-                hex.r -= 1.;
-            },
-            Action::Right => {
-                hex.q += 1.;
-            },
-            Action::DownRight => {
-                hex.r += 1.;
-            },
-            Action::DownLeft => {
-                hex.q -= 1.;
-                hex.r += 1.;
-            },
-            Action::Down => (),
-            Action::Left => {
-                hex.q -= 1.;
-            },
-            Action::UpLeft => {
-                hex.r -= 1.;
-            },
-            Action::None => (),
+    for (mut hex, mut input_handler) in query.iter_mut() {
+        if input_handler.action != input_handler.last_action {
+            match input_handler.action {
+                Action::Up => (),
+                Action::UpRight => {
+                    hex.q += 1.;
+                    hex.r -= 1.;
+                },
+                Action::Right => {
+                    hex.q += 1.;
+                },
+                Action::DownRight => {
+                    hex.r += 1.;
+                },
+                Action::DownLeft => {
+                    hex.q -= 1.;
+                    hex.r += 1.;
+                },
+                Action::Down => (),
+                Action::Left => {
+                    hex.q -= 1.;
+                },
+                Action::UpLeft => {
+                    hex.r -= 1.;
+                },
+                Action::None => (),
+            }
+            input_handler.last_action = input_handler.action;
         }
     }
 }
@@ -197,7 +207,6 @@ fn keyboard_events(
     mut key_evr: EventReader<KeyboardInput>,
 ) {
     use bevy::input::ElementState;
-
     for ev in key_evr.iter() {
         match ev.state {
             ElementState::Pressed => {
