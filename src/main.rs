@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use bevy_inspector_egui::{Inspectable, WorldInspectorPlugin, RegisterInspectable};
 use rand::{thread_rng, Rng};
 use bevy::input::keyboard::KeyboardInput;
+use bevy::core::FixedTimestep;
 
 #[derive(Component, Inspectable)]
 struct Hex {
@@ -11,7 +12,10 @@ struct Hex {
 }
 
 #[derive(Component)]
-struct Head;
+struct Head {
+    direction: Direction,
+    last_direction: Direction
+}
 
 #[derive(Component)]
 struct Tail;
@@ -19,14 +23,8 @@ struct Tail;
 #[derive(Component)]
 struct Food;
 
-#[derive(Component)]
-struct InputHandler {
-    action: Action,
-    last_action: Action
-}
-
 #[derive(Clone, Component, Copy, Debug, PartialEq)]
-enum Action {
+enum Direction {
     Up,
     UpRight,
     Right,
@@ -35,13 +33,7 @@ enum Action {
     DownLeft,
     Left,
     UpLeft,
-    None,
-}
-
-#[derive(Component)]
-struct InputQue {
-    que: Vec<Action>,
-    last_input: Action
+    None
 }
 
 fn main() {
@@ -52,14 +44,18 @@ fn main() {
         .add_startup_system(setup)
         .add_system(hex_to_pixel)
         .add_system(action_system)
-        .add_system(head_movement)
+        .add_system_set(
+            SystemSet::new()
+            .with_run_criteria(FixedTimestep::step(0.75))
+            .with_system(head_movement)
+        )
         .add_system(keyboard_events)
         .run();
 }
 
 fn generate_map(x: isize) -> Vec<Hex> {
     let mut map: Vec<Hex> = vec![];
-    for i in (-1 * x)..x+1 {
+    for i in -x..x+1 {
         for j in -x..x+1 {
             if (i + j).abs() <= x {
                 map.push(Hex{ q: i as f32, r: j as f32, z: 0. });
@@ -92,8 +88,7 @@ fn setup(
         ..Default::default()
     })
     .insert(Hex { q: 0., r: 0., z: 1. })
-    .insert(Head)
-    .insert(InputHandler { action: Action::None, last_action: Action::None });
+    .insert(Head {direction: Direction::None, last_direction: Direction::None});
 }
 
 /// Convert hex to pixel
@@ -111,95 +106,94 @@ fn hex_to_pixel(
 
 fn action_system(
     keyboard_input: Res<Input<KeyCode>>,
-    mut query: Query<&mut InputHandler>
+    mut query: Query<&mut Head>
 ) {
-    if let Some(mut input_handler) = query.iter_mut().next() {
+    if let Some(mut head) = query.iter_mut().next() {
         if 
             keyboard_input.pressed(KeyCode::Up) && 
             !keyboard_input.pressed(KeyCode::Right) && 
             !keyboard_input.pressed(KeyCode::Down) && 
             !keyboard_input.pressed(KeyCode::Left) {
-                input_handler.action = Action::Up;
+                head.direction = Direction::Up;
         } else if 
             keyboard_input.pressed(KeyCode::Up) && 
             keyboard_input.pressed(KeyCode::Right) && 
             !keyboard_input.pressed(KeyCode::Down) &&
             !keyboard_input.pressed(KeyCode::Left) {
-                input_handler.action = Action::UpRight;
+                head.direction = Direction::UpRight;
         } else if 
             !keyboard_input.pressed(KeyCode::Up) &&
             keyboard_input.pressed(KeyCode::Right) && 
             !keyboard_input.pressed(KeyCode::Down) && 
             !keyboard_input.pressed(KeyCode::Left) {
-                input_handler.action = Action::Right;
+                head.direction = Direction::Right;
         } else if 
             !keyboard_input.pressed(KeyCode::Up) &&
             keyboard_input.pressed(KeyCode::Right) && 
             keyboard_input.pressed(KeyCode::Down) && 
             !keyboard_input.pressed(KeyCode::Left) {
-                input_handler.action = Action::DownRight;
+                head.direction = Direction::DownRight;
         } else if
             !keyboard_input.pressed(KeyCode::Up) &&
             !keyboard_input.pressed(KeyCode::Right) && 
             keyboard_input.pressed(KeyCode::Down) && 
             !keyboard_input.pressed(KeyCode::Left) {
-                input_handler.action = Action::Down;
+                head.direction = Direction::Down;
         } else if
             !keyboard_input.pressed(KeyCode::Up) &&
             !keyboard_input.pressed(KeyCode::Right) && 
             keyboard_input.pressed(KeyCode::Down) && 
             keyboard_input.pressed(KeyCode::Left) {
-                input_handler.action = Action::DownLeft;
+                head.direction = Direction::DownLeft;
         } else if
             !keyboard_input.pressed(KeyCode::Up) &&
             !keyboard_input.pressed(KeyCode::Right) && 
             !keyboard_input.pressed(KeyCode::Down) && 
             keyboard_input.pressed(KeyCode::Left) {
-                input_handler.action = Action::Left;
+                head.direction = Direction::Left;
         } else if
             keyboard_input.pressed(KeyCode::Up) &&
             !keyboard_input.pressed(KeyCode::Right) && 
             !keyboard_input.pressed(KeyCode::Down) && 
             keyboard_input.pressed(KeyCode::Left) {
-                input_handler.action = Action::UpLeft;
-        } else {
-            input_handler.action = Action::None;
-        }
+                head.direction = Direction::UpLeft
+        } else if
+            keyboard_input.pressed(KeyCode::Space) {
+                head.direction = Direction::None;
+            }
     }
 }
 
 fn head_movement(
-    mut query: Query<(&mut Hex, &mut InputHandler), With<Head>>
+    mut query: Query<(&mut Hex, &mut Head)>
 ) {
-    for (mut hex, mut input_handler) in query.iter_mut() {
-        if input_handler.action != input_handler.last_action {
-            match input_handler.action {
-                Action::Up => (),
-                Action::UpRight => {
-                    hex.q += 1.;
-                    hex.r -= 1.;
-                },
-                Action::Right => {
-                    hex.q += 1.;
-                },
-                Action::DownRight => {
-                    hex.r += 1.;
-                },
-                Action::DownLeft => {
-                    hex.q -= 1.;
-                    hex.r += 1.;
-                },
-                Action::Down => (),
-                Action::Left => {
-                    hex.q -= 1.;
-                },
-                Action::UpLeft => {
-                    hex.r -= 1.;
-                },
-                Action::None => (),
-            }
-            input_handler.last_action = input_handler.action;
+    for (mut hex, mut head) in query.iter_mut() {
+        match head.direction {
+            Direction::Up => (),
+            Direction::UpRight => {
+                hex.q += 1.;
+                hex.r -= 1.;
+            },
+            Direction::Right => {
+                hex.q += 1.;
+            },
+            Direction::DownRight => {
+                hex.r += 1.;
+            },
+            Direction::DownLeft => {
+                hex.q -= 1.;
+                hex.r += 1.;
+            },
+            Direction::Down => (),
+            Direction::Left => {
+                hex.q -= 1.;
+            },
+            Direction::UpLeft => {
+                hex.r -= 1.;
+            },
+            Direction::None => (),
         }
+        head.last_direction = head.direction;
     }
 }
 
