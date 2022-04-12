@@ -3,6 +3,7 @@ use bevy_inspector_egui::{Inspectable, WorldInspectorPlugin, RegisterInspectable
 use rand::{thread_rng, Rng};
 use bevy::input::keyboard::KeyboardInput;
 use bevy::core::FixedTimestep;
+use bevy_editor_pls::*;
 
 #[derive(Component, Inspectable)]
 struct Hex {
@@ -39,6 +40,9 @@ enum Direction {
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
+        .add_plugin(EditorPlugin)
+        .add_plugin(bevy::diagnostic::FrameTimeDiagnosticsPlugin)
+        .add_plugin(bevy::diagnostic::EntityCountDiagnosticsPlugin)
         .add_plugin(WorldInspectorPlugin::new())
         .register_inspectable::<Hex>()
         .add_startup_system(setup)
