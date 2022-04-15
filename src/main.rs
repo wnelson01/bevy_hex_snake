@@ -118,7 +118,7 @@ fn action_system(
             !keyboard_input.pressed(KeyCode::Right) && 
             !keyboard_input.pressed(KeyCode::Down) && 
             !keyboard_input.pressed(KeyCode::Left) {
-                head.direction = Direction::Up;
+                // head.direction = Direction::Up;
         } else if 
             keyboard_input.pressed(KeyCode::Up) && 
             keyboard_input.pressed(KeyCode::Right) && 
