@@ -4,6 +4,10 @@ use rand::{thread_rng, Rng};
 use bevy::input::keyboard::KeyboardInput;
 use bevy::core::FixedTimestep;
 use bevy_editor_pls::*;
+use integer_sqrt::IntegerSquareRoot;
+
+#[derive(Default)]
+struct WorldSize(isize);
 
 #[derive(Component, Inspectable)]
 struct Hex {
@@ -22,7 +26,7 @@ struct Head {
 struct Tail;
 
 #[derive(Component)]
-struct Food;
+struct Crumple;
 
 #[derive(Clone, Component, Copy, Debug, PartialEq)]
 enum Direction {
@@ -44,6 +48,7 @@ fn main() {
         .add_plugin(bevy::diagnostic::FrameTimeDiagnosticsPlugin)
         .add_plugin(bevy::diagnostic::EntityCountDiagnosticsPlugin)
         .add_plugin(WorldInspectorPlugin::new())
+        .insert_resource(WorldSize(4))
         .register_inspectable::<Hex>()
         .add_startup_system(setup)
         .add_system(hex_to_pixel)
@@ -59,8 +64,8 @@ fn main() {
 
 fn generate_map(x: isize) -> Vec<Hex> {
     let mut map: Vec<Hex> = vec![];
-    for i in -x..x+1 {
-        for j in -x..x+1 {
+    for i in -x..=x {
+        for j in -x..=x {
             if (i + j).abs() <= x {
                 map.push(Hex{ q: i as f32, r: j as f32, z: 0. });
             }
@@ -72,12 +77,13 @@ fn generate_map(x: isize) -> Vec<Hex> {
 fn setup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
+    world_size: Res<WorldSize>
 ) {
     let mut camera = OrthographicCameraBundle::new_2d();
     camera.transform.scale = Vec3::new(2.0, 2.0, 1.0);
     commands.spawn_bundle(camera);
 
-    let map = generate_map(4);
+    let map = generate_map(world_size.0);
     let texture_handle = asset_server.load_folder("HK-Heightend Sensory Input v2/HSI - Indigo/").unwrap();
     for hex in map {
         commands.spawn_bundle(SpriteBundle {
@@ -96,12 +102,15 @@ fn setup(
 }
 
 /// Convert hex to pixel
+/// size = distance from center to corner
+/// x = size * (sqrt(3) * hex.q + sqrt(3)/2 * hex.r)
+/// y = size * ( 3./2 * hex.r)
 fn hex_to_pixel(
     mut query: Query<(&Hex, &mut Transform), Changed<Hex>>,
 ) {
     for (hex, mut transform) in query.iter_mut() {
         transform.translation = Vec3::new(
-            105. * (3.0_f32.sqrt() * hex.q + (3 as f32).sqrt() / 2. * hex.r),
+            105. * (3.0_f32.sqrt() * hex.q + (3.0_f32).sqrt() / 2. * hex.r),
             -105. * (3./2. * hex.r),
             hex.z,
         )
@@ -142,7 +151,7 @@ fn action_system(
             !keyboard_input.pressed(KeyCode::Right) && 
             keyboard_input.pressed(KeyCode::Down) && 
             !keyboard_input.pressed(KeyCode::Left) {
-                head.direction = Direction::Down;
+                // head.direction = Direction::Down;
         } else if
             !keyboard_input.pressed(KeyCode::Up) &&
             !keyboard_input.pressed(KeyCode::Right) && 
@@ -215,4 +224,18 @@ fn keyboard_events(
             }
         }
     }
+}
+
+fn spawn_crumple(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>
+) {
+    let handle = asset_server.load("HK-Heigtened Sensory Input v2/HSI - Icons/Hsi - Icon Geometric Light/HSI_icon_109l.png");
+    commands.spawn_bundle(SpriteBundle {
+            texture: handle,
+            ..Default::default()
+        })
+        .insert(Hex { q:0., r:0., z:1. })
+        .insert(Crumple);
+
 }
