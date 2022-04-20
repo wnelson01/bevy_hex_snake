@@ -3,7 +3,7 @@ use bevy_inspector_egui::{Inspectable, WorldInspectorPlugin, RegisterInspectable
 use rand::{thread_rng, Rng};
 use bevy::input::keyboard::KeyboardInput;
 use bevy::core::FixedTimestep;
-use bevy_editor_pls::*;
+use bevy_editor_pls::prelude::*;
 use integer_sqrt::IntegerSquareRoot;
 
 #[derive(Default)]
