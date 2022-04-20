@@ -4,6 +4,8 @@ use rand::{thread_rng, Rng};
 use bevy::input::keyboard::KeyboardInput;
 use bevy::core::FixedTimestep;
 use bevy_editor_pls::prelude::*;
+use rand::prelude::random;
+
 use integer_sqrt::IntegerSquareRoot;
 
 #[derive(Default)]
@@ -51,13 +53,18 @@ fn main() {
         .insert_resource(WorldSize(4))
         .register_inspectable::<Hex>()
         .add_startup_system(setup)
-        .add_system(hex_to_pixel)
         .add_system(action_system)
         .add_system_set(
             SystemSet::new()
             .with_run_criteria(FixedTimestep::step(0.75))
             .with_system(head_movement)
         )
+        .add_system_set(
+            SystemSet::new()
+            .with_run_criteria(FixedTimestep::step(1.0))
+            .with_system(spawn_crumple)
+        )
+        .add_system(hex_to_pixel)
         .add_system(keyboard_events)
         .run();
 }
@@ -228,14 +235,18 @@ fn keyboard_events(
 
 fn spawn_crumple(
     mut commands: Commands,
-    asset_server: Res<AssetServer>
+    asset_server: Res<AssetServer>,
+    world_size: Res<WorldSize>
 ) {
-    let handle = asset_server.load("HK-Heigtened Sensory Input v2/HSI - Icons/Hsi - Icon Geometric Light/HSI_icon_109l.png");
+    let handle: Handle<Image>= asset_server.load("HK-Heightend Sensory Input v2/HSI - Icons/HSI - Icon Geometric Light/HSI_icon_109l.png");
     commands.spawn_bundle(SpriteBundle {
             texture: handle,
             ..Default::default()
         })
-        .insert(Hex { q:0., r:0., z:1. })
+        .insert(Hex {
+            q: (rand::thread_rng().gen_range(-world_size.0..=world_size.0)) as f32,
+            r: (rand::thread_rng().gen_range(-world_size.0..=world_size.0)) as f32,
+            z: 1.
+        })
         .insert(Crumple);
-
 }
