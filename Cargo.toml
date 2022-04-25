@@ -14,7 +14,6 @@ bevy = { version = "0.7.0", features = ["dynamic"] }
 rand = "0.8.0"
 bevy-inspector-egui = "0.10.0"
 bevy_editor_pls = {git = "https://github.com/jakobhellermann/bevy_editor_pls"}
-integer-sqrt = "0.1.5"
 
 [workspace]
 resolver = "2"

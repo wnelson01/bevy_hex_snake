@@ -4,9 +4,8 @@ use rand::{thread_rng, Rng};
 use bevy::input::keyboard::KeyboardInput;
 use bevy::core::FixedTimestep;
 use bevy_editor_pls::prelude::*;
-use rand::prelude::random;
+use std::time::Duration;
 
-use integer_sqrt::IntegerSquareRoot;
 
 #[derive(Default)]
 struct WorldSize(isize);
@@ -32,17 +31,20 @@ struct Crumple;
 
 #[derive(Clone, Component, Copy, Debug, PartialEq)]
 enum Direction {
-    Up,
     UpRight,
     Right,
     DownRight,
-    Down,
     DownLeft,
     Left,
     UpLeft,
     None
 }
 
+#[derive(Component)]
+struct FuseTime {
+    /// track when the bomb should explode (non-repeating timer)
+    timer: Timer,
+}
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
@@ -59,6 +61,7 @@ fn main() {
             .with_run_criteria(FixedTimestep::step(0.75))
             .with_system(head_movement)
         )
+        .add_system(despawn_crumple)
         .add_system_set(
             SystemSet::new()
             .with_run_criteria(FixedTimestep::step(1.0))
@@ -189,7 +192,6 @@ fn head_movement(
 ) {
     for (mut hex, mut head) in query.iter_mut() {
         match head.direction {
-            Direction::Up => (),
             Direction::UpRight => {
                 hex.q += 1.;
                 hex.r -= 1.;
@@ -204,7 +206,6 @@ fn head_movement(
                 hex.q -= 1.;
                 hex.r += 1.;
             },
-            Direction::Down => (),
             Direction::Left => {
                 hex.q -= 1.;
             },
@@ -236,7 +237,7 @@ fn keyboard_events(
 fn spawn_crumple(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
-    world_size: Res<WorldSize>
+    world_size: Res<WorldSize>,
 ) {
     let handle: Handle<Image>= asset_server.load("HK-Heightend Sensory Input v2/HSI - Icons/HSI - Icon Geometric Light/HSI_icon_109l.png");
     commands.spawn_bundle(SpriteBundle {
@@ -248,5 +249,22 @@ fn spawn_crumple(
             r: (rand::thread_rng().gen_range(-world_size.0..=world_size.0)) as f32,
             z: 1.
         })
-        .insert(Crumple);
+        .insert(Crumple)
+        .insert(FuseTime {
+            timer: Timer::new(Duration::from_secs(1), false)
+        });
+}
+
+fn despawn_crumple(
+    mut commands: Commands,
+    mut query: Query<(Entity, &mut FuseTime), With<Crumple>>,
+    time: Res<Time>,
+) {
+    for (entity, mut fuse_timer) in query.iter_mut() {
+        fuse_timer.timer.tick(time.delta());
+
+        if fuse_timer.timer.finished() {
+            commands.entity(entity).despawn();
+        }
+    }
 }
