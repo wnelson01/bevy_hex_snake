@@ -6,7 +6,6 @@ use bevy::core::FixedTimestep;
 use bevy_editor_pls::prelude::*;
 use std::time::Duration;
 
-
 #[derive(Default)]
 struct WorldSize(isize);
 
@@ -45,6 +44,13 @@ struct FuseTime {
     /// track when the bomb should explode (non-repeating timer)
     timer: Timer,
 }
+
+#[derive(Component)]
+struct Segment;
+
+#[derive(Default)]
+struct Segments(Vec<Entity>);
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
@@ -53,8 +59,10 @@ fn main() {
         .add_plugin(bevy::diagnostic::EntityCountDiagnosticsPlugin)
         .add_plugin(WorldInspectorPlugin::new())
         .insert_resource(WorldSize(4))
+        .insert_resource(Segments::default())
         .register_inspectable::<Hex>()
         .add_startup_system(setup)
+        .add_startup_system(spawn_snake)
         .add_system(action_system)
         .add_system_set(
             SystemSet::new()
@@ -102,13 +110,31 @@ fn setup(
         }).insert(hex);
     }
 
+    // let texture_handle = asset_server.load("HK-Heightend Sensory Input v2/HSI - Icons/HSI - Icon Geometric Light/HSI_icon_123l.png");
+    // commands.spawn_bundle(SpriteBundle {
+    //     texture: texture_handle,
+    //     ..Default::default()
+    // })
+    // .insert(Hex { q: 0., r: 0., z: 1. })
+    // .insert(Head {direction: Direction::None, last_direction: Direction::None});
+}
+
+fn spawn_snake(
+    mut commands: Commands,
+    mut segments: ResMut<Segments>,
+    asset_server: Res<AssetServer>
+) {
     let texture_handle = asset_server.load("HK-Heightend Sensory Input v2/HSI - Icons/HSI - Icon Geometric Light/HSI_icon_123l.png");
-    commands.spawn_bundle(SpriteBundle {
-        texture: texture_handle,
-        ..Default::default()
-    })
-    .insert(Hex { q: 0., r: 0., z: 1. })
-    .insert(Head {direction: Direction::None, last_direction: Direction::None});
+    *segments = Segments(vec![
+        commands.spawn_bundle(SpriteBundle {
+            texture: texture_handle,
+            ..Default::default()
+        })
+        .insert(Hex { q: 0., r: 0., z: 1. })
+        .insert(Head { direction: Direction::None, last_direction: Direction::None })
+        .id(),
+        spawn_segment(commands, asset_server),
+    ]);
 }
 
 /// Convert hex to pixel
@@ -267,4 +293,18 @@ fn despawn_crumple(
             commands.entity(entity).despawn();
         }
     }
+}
+
+fn spawn_segment(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>
+) -> Entity {
+    let texture_handle = asset_server.load("HK-Heightend Sensory Input v2/HSI - Icons/HSI - Icon Geometric Light/HSI_icon_123l.png");
+    commands.spawn_bundle(SpriteBundle {
+        texture: texture_handle,
+        ..Default::default()
+    })
+    .insert(Hex { q: 0., r: 0., z: 1. })
+    .insert(Segment)
+    .id()
 }
