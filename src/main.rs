@@ -6,29 +6,40 @@ use bevy::core::FixedTimestep;
 use bevy_editor_pls::prelude::*;
 use std::time::Duration;
 
+struct UpdateFollower {
+    entity: Entity,
+    hex: Hex
+}
+
 #[derive(Default)]
 struct WorldSize(isize);
 
-#[derive(Component, Inspectable)]
+#[derive(Component)]
+struct Following(Entity);
+
+#[derive(Component)]
+struct Follower(Entity);
+
+#[derive(Component, Clone, Copy)]
 struct Hex {
     q: f32,
     r: f32,
     z: f32
 }
 
-#[derive(Component)]
+#[derive(Component, Inspectable)]
 struct Head {
     direction: Direction,
     last_direction: Direction
 }
 
-#[derive(Component)]
+#[derive(Component, Inspectable)]
 struct Tail;
 
 #[derive(Component)]
 struct Crumple;
 
-#[derive(Clone, Component, Copy, Debug, PartialEq)]
+#[derive(Clone, Component, Inspectable, Copy, Debug, PartialEq)]
 enum Direction {
     UpRight,
     Right,
@@ -48,9 +59,6 @@ struct FuseTime {
 #[derive(Component)]
 struct Segment;
 
-#[derive(Default)]
-struct Segments(Vec<Entity>);
-
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
@@ -59,8 +67,9 @@ fn main() {
         .add_plugin(bevy::diagnostic::EntityCountDiagnosticsPlugin)
         .add_plugin(WorldInspectorPlugin::new())
         .insert_resource(WorldSize(4))
-        .insert_resource(Segments::default())
-        .register_inspectable::<Hex>()
+        // .register_inspectable::<Hex>()
+        .register_inspectable::<Head>()
+        .register_inspectable::<Tail>()
         .add_startup_system(setup)
         .add_startup_system(spawn_snake)
         .add_system(action_system)
@@ -70,13 +79,25 @@ fn main() {
             .with_system(head_movement)
         )
         .add_system(despawn_crumple)
+        // .add_system_set(
+        //     SystemSet::new()
+        //     .with_run_criteria(FixedTimestep::step(1.0))
+        //     .with_system(spawn_crumple)
+        // )
         .add_system_set(
             SystemSet::new()
-            .with_run_criteria(FixedTimestep::step(1.0))
-            .with_system(spawn_crumple)
+            .with_run_criteria(FixedTimestep::step(3.0))
+            .with_system(spawn_segment)
         )
+        .add_system_set(
+            SystemSet::new()
+            .with_run_criteria(FixedTimestep::step(2.0))
+            .with_system(update_follower)
+        )
+        .add_system(on_update_follower)
         .add_system(hex_to_pixel)
         .add_system(keyboard_events)
+        .add_event::<UpdateFollower>()
         .run();
 }
 
@@ -109,32 +130,20 @@ fn setup(
             ..Default::default()
         }).insert(hex);
     }
-
-    // let texture_handle = asset_server.load("HK-Heightend Sensory Input v2/HSI - Icons/HSI - Icon Geometric Light/HSI_icon_123l.png");
-    // commands.spawn_bundle(SpriteBundle {
-    //     texture: texture_handle,
-    //     ..Default::default()
-    // })
-    // .insert(Hex { q: 0., r: 0., z: 1. })
-    // .insert(Head {direction: Direction::None, last_direction: Direction::None});
 }
 
 fn spawn_snake(
     mut commands: Commands,
-    mut segments: ResMut<Segments>,
     asset_server: Res<AssetServer>
 ) {
     let texture_handle = asset_server.load("HK-Heightend Sensory Input v2/HSI - Icons/HSI - Icon Geometric Light/HSI_icon_123l.png");
-    *segments = Segments(vec![
-        commands.spawn_bundle(SpriteBundle {
-            texture: texture_handle,
-            ..Default::default()
-        })
-        .insert(Hex { q: 0., r: 0., z: 1. })
-        .insert(Head { direction: Direction::None, last_direction: Direction::None })
-        .id(),
-        spawn_segment(commands, asset_server),
-    ]);
+    commands.spawn_bundle(SpriteBundle {
+        texture: texture_handle,
+        ..Default::default()
+    })
+    .insert(Hex { q: 0., r: 0., z: 1. })
+    .insert(Head { direction: Direction::None, last_direction: Direction::None })
+    .insert(Tail);
 }
 
 /// Convert hex to pixel
@@ -214,9 +223,9 @@ fn action_system(
 }
 
 fn head_movement(
-    mut query: Query<(&mut Hex, &mut Head)>
+    mut query: Query<(Entity, &mut Hex, &mut Head)>
 ) {
-    for (mut hex, mut head) in query.iter_mut() {
+    for (entity, mut hex, mut head) in query.iter_mut() {
         match head.direction {
             Direction::UpRight => {
                 hex.q += 1.;
@@ -297,14 +306,45 @@ fn despawn_crumple(
 
 fn spawn_segment(
     mut commands: Commands,
-    asset_server: Res<AssetServer>
-) -> Entity {
+    asset_server: Res<AssetServer>,
+    query: Query<(Entity, &Hex), With<Tail>>
+) {
+    let (entity, hex) = query.single();
+    commands.entity(entity).remove::<Tail>();
     let texture_handle = asset_server.load("HK-Heightend Sensory Input v2/HSI - Icons/HSI - Icon Geometric Light/HSI_icon_123l.png");
-    commands.spawn_bundle(SpriteBundle {
+    let follower = commands.spawn_bundle(SpriteBundle {
         texture: texture_handle,
         ..Default::default()
     })
-    .insert(Hex { q: 0., r: 0., z: 1. })
-    .insert(Segment)
-    .id()
+    .insert(Hex { q: hex.q, r: hex.r, z: 1. })
+    .insert(Tail)
+    .insert(Following(entity)).id();
+    commands.entity(entity).insert(Follower(follower));
+}
+
+fn update_follower(
+    mut update_follower: EventWriter<UpdateFollower>,
+    query: Query<(&Hex, &Follower)>
+) {
+    for (hex, follower) in query.iter() {
+        let event = UpdateFollower {
+            entity: follower.0,
+            hex: Hex{ q: hex.q, r: hex.r, z: 1. }
+        };
+        update_follower.send(event);
+    }
+}
+
+fn on_update_follower(
+    mut query: Query<&mut Hex, With<Following>>,
+    mut follower_update: EventReader<UpdateFollower>
+) {
+    for event in follower_update.iter() {
+        let entity = event.entity;
+        let q = event.hex.q;
+        let r = event.hex.r;
+        let mut hex = query.get_mut(entity).unwrap();
+        hex.q = q;
+        hex.r = r;
+    }
 }
