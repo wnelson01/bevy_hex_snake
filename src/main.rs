@@ -24,8 +24,11 @@ struct Follower(Entity);
 struct Hex {
     q: f32,
     r: f32,
-    z: f32
+    z: f32,
 }
+
+#[derive(Component)]
+struct HexHistory(Vec<Hex>);
 
 #[derive(Component, Inspectable)]
 struct Head {
@@ -75,6 +78,7 @@ fn main() {
         .add_system(action_system)
         .add_system_set(
             SystemSet::new()
+            .label("head_movement")
             .with_run_criteria(FixedTimestep::step(0.75))
             .with_system(head_movement)
         )
@@ -86,16 +90,16 @@ fn main() {
         // )
         .add_system_set(
             SystemSet::new()
+            .label("spawn_segment")
             .with_run_criteria(FixedTimestep::step(3.0))
             .with_system(spawn_segment)
         )
         .add_system_set(
             SystemSet::new()
-            .with_run_criteria(FixedTimestep::step(2.0))
             .with_system(update_follower)
+            .with_system(on_update_follower)
         )
-        .add_system(on_update_follower)
-        .add_system(hex_to_pixel)
+        .add_system(hex_to_pixel.label("hex_to_pixel"))
         .add_system(keyboard_events)
         .add_event::<UpdateFollower>()
         .run();
@@ -142,6 +146,7 @@ fn spawn_snake(
         ..Default::default()
     })
     .insert(Hex { q: 0., r: 0., z: 1. })
+    .insert(HexHistory(Vec::new()))
     .insert(Head { direction: Direction::None, last_direction: Direction::None })
     .insert(Tail);
 }
@@ -223,9 +228,10 @@ fn action_system(
 }
 
 fn head_movement(
-    mut query: Query<(Entity, &mut Hex, &mut Head)>
+    mut query: Query<(&mut Hex, &mut Head, &mut HexHistory)>
 ) {
-    for (entity, mut hex, mut head) in query.iter_mut() {
+    for (mut hex, mut head, mut hex_history) in query.iter_mut() {
+        hex_history.0.push(hex.clone());
         match head.direction {
             Direction::UpRight => {
                 hex.q += 1.;
@@ -317,33 +323,35 @@ fn spawn_segment(
         ..Default::default()
     })
     .insert(Hex { q: hex.q, r: hex.r, z: 1. })
+    .insert(HexHistory(Vec::new()))
     .insert(Tail)
     .insert(Following(entity)).id();
     commands.entity(entity).insert(Follower(follower));
 }
 
 fn update_follower(
-    mut update_follower: EventWriter<UpdateFollower>,
-    query: Query<(&Hex, &Follower)>
+    query: Query<(&HexHistory, &Follower), Changed<Hex>>,
+    mut update_follower: EventWriter<UpdateFollower>
 ) {
-    for (hex, follower) in query.iter() {
+    for (hex_history, follower) in query.iter() {
         let event = UpdateFollower {
             entity: follower.0,
-            hex: Hex{ q: hex.q, r: hex.r, z: 1. }
+            hex: hex_history.0.last().unwrap().clone()
         };
         update_follower.send(event);
     }
 }
 
 fn on_update_follower(
-    mut query: Query<&mut Hex, With<Following>>,
+    mut query: Query<(&mut Hex, &mut HexHistory), With<Following>>,
     mut follower_update: EventReader<UpdateFollower>
 ) {
     for event in follower_update.iter() {
         let entity = event.entity;
+        let (mut hex, mut hex_history) = query.get_mut(entity).unwrap();
+        hex_history.0.push(hex.clone());
         let q = event.hex.q;
         let r = event.hex.r;
-        let mut hex = query.get_mut(entity).unwrap();
         hex.q = q;
         hex.r = r;
     }
