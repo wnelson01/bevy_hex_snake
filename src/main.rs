@@ -73,6 +73,7 @@ fn main() {
         // .register_inspectable::<Hex>()
         .register_inspectable::<Head>()
         .register_inspectable::<Tail>()
+        .add_startup_system(generate_map)
         .add_startup_system(setup)
         .add_startup_system(spawn_snake)
         .add_system(action_system)
@@ -105,35 +106,36 @@ fn main() {
         .run();
 }
 
-fn generate_map(x: isize) -> Vec<Hex> {
-    let mut map: Vec<Hex> = vec![];
-    for i in -x..=x {
-        for j in -x..=x {
-            if (i + j).abs() <= x {
-                map.push(Hex{ q: i as f32, r: j as f32, z: 0. });
-            }
-        }
-    }
-    map
-}
-
-fn setup(
+fn generate_map(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     world_size: Res<WorldSize>
 ) {
+    let mut map: Vec<Hex> = vec![];
+    for i in -world_size.0..=world_size.0 {
+        for j in -world_size.0..=world_size.0 {
+            if (i + j).abs() <= world_size.0 {
+                map.push(Hex { q: i as f32, r: j as f32, z: 0. });
+            }
+        }
+    }
+    let texture_handle = asset_server.load_folder("HK-Heightend Sensory Input v2/HSI - Indigo/").unwrap();
+    for hex in map {
+        commands.spawn_bundle(
+            SpriteBundle{
+                texture: texture_handle[thread_rng().gen_range(0..texture_handle.len())].clone().typed().into(),
+                ..Default::default()
+            })
+            .insert(hex);
+    }
+}
+
+fn setup(
+    mut commands: Commands,
+) {
     let mut camera = OrthographicCameraBundle::new_2d();
     camera.transform.scale = Vec3::new(2.0, 2.0, 1.0);
     commands.spawn_bundle(camera);
-
-    let map = generate_map(world_size.0);
-    let texture_handle = asset_server.load_folder("HK-Heightend Sensory Input v2/HSI - Indigo/").unwrap();
-    for hex in map {
-        commands.spawn_bundle(SpriteBundle {
-            texture: texture_handle[thread_rng().gen_range(0..texture_handle.len())].clone().typed().into(),
-            ..Default::default()
-        }).insert(hex);
-    }
 }
 
 fn spawn_snake(
