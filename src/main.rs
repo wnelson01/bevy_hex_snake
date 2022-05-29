@@ -4,12 +4,17 @@ use rand::{thread_rng, Rng};
 use bevy::input::keyboard::KeyboardInput;
 use bevy::core::FixedTimestep;
 use bevy_editor_pls::prelude::*;
-use std::time::Duration;
+
+struct CrumpleHandle(Handle<Image>);
 
 struct UpdateFollower {
     entity: Entity,
     hex: Hex
 }
+
+struct SpawnCrumple();
+
+struct SpawnSegment();
 
 #[derive(Default)]
 struct WorldSize(isize);
@@ -54,12 +59,6 @@ enum Direction {
 }
 
 #[derive(Component)]
-struct FuseTime {
-    /// track when the bomb should explode (non-repeating timer)
-    timer: Timer,
-}
-
-#[derive(Component)]
 struct Segment;
 
 fn main() {
@@ -74,6 +73,8 @@ fn main() {
         .register_inspectable::<Head>()
         .register_inspectable::<Tail>()
         .add_startup_system(generate_map)
+        .add_startup_system(spawn_initial_crumple)
+        .add_system(spawn_crumple)
         .add_startup_system(setup)
         .add_startup_system(spawn_snake)
         .add_system(action_system)
@@ -83,18 +84,7 @@ fn main() {
             .with_run_criteria(FixedTimestep::step(0.75))
             .with_system(head_movement)
         )
-        .add_system(despawn_crumple)
-        // .add_system_set(
-        //     SystemSet::new()
-        //     .with_run_criteria(FixedTimestep::step(1.0))
-        //     .with_system(spawn_crumple)
-        // )
-        .add_system_set(
-            SystemSet::new()
-            .label("spawn_segment")
-            .with_run_criteria(FixedTimestep::step(3.0))
-            .with_system(spawn_segment)
-        )
+        .add_system(spawn_segment)
         .add_system_set(
             SystemSet::new()
             .with_system(update_follower)
@@ -103,6 +93,9 @@ fn main() {
         .add_system(hex_to_pixel.label("hex_to_pixel"))
         .add_system(keyboard_events)
         .add_event::<UpdateFollower>()
+        .add_event::<SpawnCrumple>()
+        .add_event::<SpawnSegment>()
+        .add_system(head_crumple_collision)
         .run();
 }
 
@@ -132,10 +125,13 @@ fn generate_map(
 
 fn setup(
     mut commands: Commands,
+    server: Res<AssetServer>
 ) {
     let mut camera = OrthographicCameraBundle::new_2d();
     camera.transform.scale = Vec3::new(2.0, 2.0, 1.0);
     commands.spawn_bundle(camera);
+    let handle: Handle<Image> = server.load("HK-Heightend Sensory Input v2/HSI - Icons/HSI - Icon Geometric Light/HSI_icon_109l.png");
+    commands.insert_resource(CrumpleHandle(handle));
 }
 
 fn spawn_snake(
@@ -232,7 +228,7 @@ fn action_system(
 fn head_movement(
     mut query: Query<(&mut Hex, &mut Head, &mut HexHistory)>
 ) {
-    for (mut hex, mut head, mut hex_history) in query.iter_mut() {
+    for (mut hex, mut head, mut hex_history) in query.iter_mut() {    
         hex_history.0.push(hex.clone());
         match head.direction {
             Direction::UpRight => {
@@ -277,58 +273,54 @@ fn keyboard_events(
     }
 }
 
+fn spawn_initial_crumple(
+    mut spawn_crumple: EventWriter<SpawnCrumple>
+) {
+    spawn_crumple.send(SpawnCrumple());
+}
+
 fn spawn_crumple(
     mut commands: Commands,
-    asset_server: Res<AssetServer>,
     world_size: Res<WorldSize>,
+    mut spawn_crumple: EventReader<SpawnCrumple>,
+    handle: Res<CrumpleHandle>
 ) {
-    let handle: Handle<Image>= asset_server.load("HK-Heightend Sensory Input v2/HSI - Icons/HSI - Icon Geometric Light/HSI_icon_109l.png");
-    commands.spawn_bundle(SpriteBundle {
-            texture: handle,
-            ..Default::default()
-        })
+    for _ in spawn_crumple.iter() {
+        commands.spawn_bundle(
+            SpriteBundle {
+                texture: handle.0.clone(),
+                ..Default::default()
+            }
+        )
         .insert(Hex {
             q: (rand::thread_rng().gen_range(-world_size.0..=world_size.0)) as f32,
             r: (rand::thread_rng().gen_range(-world_size.0..=world_size.0)) as f32,
             z: 1.
         })
-        .insert(Crumple)
-        .insert(FuseTime {
-            timer: Timer::new(Duration::from_secs(1), false)
-        });
-}
-
-fn despawn_crumple(
-    mut commands: Commands,
-    mut query: Query<(Entity, &mut FuseTime), With<Crumple>>,
-    time: Res<Time>,
-) {
-    for (entity, mut fuse_timer) in query.iter_mut() {
-        fuse_timer.timer.tick(time.delta());
-
-        if fuse_timer.timer.finished() {
-            commands.entity(entity).despawn();
-        }
+        .insert(Crumple);
     }
 }
 
 fn spawn_segment(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
-    query: Query<(Entity, &Hex), With<Tail>>
+    query: Query<(Entity, &Hex), With<Tail>>,
+    mut spawn_segment: EventReader<SpawnSegment>
 ) {
-    let (entity, hex) = query.single();
-    commands.entity(entity).remove::<Tail>();
-    let texture_handle = asset_server.load("HK-Heightend Sensory Input v2/HSI - Icons/HSI - Icon Geometric Light/HSI_icon_123l.png");
-    let follower = commands.spawn_bundle(SpriteBundle {
-        texture: texture_handle,
-        ..Default::default()
-    })
-    .insert(Hex { q: hex.q, r: hex.r, z: 1. })
-    .insert(HexHistory(Vec::new()))
-    .insert(Tail)
-    .insert(Following(entity)).id();
-    commands.entity(entity).insert(Follower(follower));
+    for _ in spawn_segment.iter() {
+        let (entity, hex) = query.single();
+        commands.entity(entity).remove::<Tail>();
+        let texture_handle = asset_server.load("HK-Heightend Sensory Input v2/HSI - Icons/HSI - Icon Geometric Light/HSI_icon_123l.png");
+        let follower = commands.spawn_bundle(SpriteBundle {
+            texture: texture_handle,
+            ..Default::default()
+        })
+        .insert(Hex { q: hex.q, r: hex.r, z: 1. })
+        .insert(HexHistory(Vec::new()))
+        .insert(Tail)
+        .insert(Following(entity)).id();
+        commands.entity(entity).insert(Follower(follower));
+    }
 }
 
 fn update_follower(
@@ -356,5 +348,23 @@ fn on_update_follower(
         let r = event.hex.r;
         hex.q = q;
         hex.r = r;
+    }
+}
+
+fn head_crumple_collision(
+    mut commands: Commands,
+    head_query: Query<&Hex, With<Head>>,
+    crumple_query: Query<(Entity, &Hex), With<Crumple>>,
+    mut spawn_crumple: EventWriter<SpawnCrumple>,
+    mut spawn_segment: EventWriter<SpawnSegment>
+) {
+    for head_hex in head_query.iter() {
+        for (crumple_entity, crumple_hex) in crumple_query.iter() {
+            if head_hex.q == crumple_hex.q && head_hex.r == crumple_hex.r {
+                commands.entity(crumple_entity).despawn();
+                spawn_segment.send(SpawnSegment());
+                spawn_crumple.send(SpawnCrumple());
+            }
+        }
     }
 }
