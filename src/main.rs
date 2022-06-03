@@ -128,7 +128,7 @@ fn setup(
     server: Res<AssetServer>
 ) {
     let mut camera = OrthographicCameraBundle::new_2d();
-    camera.transform.scale = Vec3::new(2.0, 2.0, 1.0);
+    camera.transform.scale = Vec3::new(3.0, 3.0, 1.0);
     commands.spawn_bundle(camera);
     let handle: Handle<Image> = server.load("HK-Heightend Sensory Input v2/HSI - Icons/HSI - Icon Geometric Light/HSI_icon_109l.png");
     commands.insert_resource(CrumpleHandle(handle));
@@ -171,52 +171,52 @@ fn action_system(
 ) {
     if let Some(mut head) = query.iter_mut().next() {
         if 
-            keyboard_input.pressed(KeyCode::Up) && 
-            !keyboard_input.pressed(KeyCode::Right) && 
-            !keyboard_input.pressed(KeyCode::Down) && 
-            !keyboard_input.pressed(KeyCode::Left) {
+            keyboard_input.any_pressed([KeyCode::Up, KeyCode::W]) && 
+            !keyboard_input.any_pressed([KeyCode::Right, KeyCode::D]) && 
+            !keyboard_input.any_pressed([KeyCode::Down, KeyCode::S]) && 
+            !keyboard_input.any_pressed([KeyCode::Left, KeyCode::A]) {
                 // head.direction = Direction::Up;
         } else if 
-            keyboard_input.pressed(KeyCode::Up) && 
-            keyboard_input.pressed(KeyCode::Right) && 
-            !keyboard_input.pressed(KeyCode::Down) &&
-            !keyboard_input.pressed(KeyCode::Left) {
+            keyboard_input.any_pressed([KeyCode::Up, KeyCode::W]) && 
+            keyboard_input.any_pressed([KeyCode::Right, KeyCode::D]) && 
+            !keyboard_input.any_pressed([KeyCode::Down, KeyCode::S]) &&
+            !keyboard_input.any_pressed([KeyCode::Left, KeyCode::A]) {
                 head.direction = Direction::UpRight;
         } else if 
-            !keyboard_input.pressed(KeyCode::Up) &&
-            keyboard_input.pressed(KeyCode::Right) && 
-            !keyboard_input.pressed(KeyCode::Down) && 
-            !keyboard_input.pressed(KeyCode::Left) {
+            !keyboard_input.any_pressed([KeyCode::Up, KeyCode::W]) &&
+            keyboard_input.any_pressed([KeyCode::Right, KeyCode::D]) && 
+            !keyboard_input.any_pressed([KeyCode::Down, KeyCode::S]) && 
+            !keyboard_input.any_pressed([KeyCode::Left, KeyCode::A]) {
                 head.direction = Direction::Right;
         } else if 
-            !keyboard_input.pressed(KeyCode::Up) &&
-            keyboard_input.pressed(KeyCode::Right) && 
-            keyboard_input.pressed(KeyCode::Down) && 
-            !keyboard_input.pressed(KeyCode::Left) {
+            !keyboard_input.any_pressed([KeyCode::Up, KeyCode::W]) &&
+            keyboard_input.any_pressed([KeyCode::Right, KeyCode::D]) && 
+            keyboard_input.any_pressed([KeyCode::Down, KeyCode::S]) && 
+            !keyboard_input.any_pressed([KeyCode::Left, KeyCode::A]) {
                 head.direction = Direction::DownRight;
         } else if
-            !keyboard_input.pressed(KeyCode::Up) &&
-            !keyboard_input.pressed(KeyCode::Right) && 
-            keyboard_input.pressed(KeyCode::Down) && 
-            !keyboard_input.pressed(KeyCode::Left) {
+            !keyboard_input.any_pressed([KeyCode::Up, KeyCode::W]) &&
+            !keyboard_input.any_pressed([KeyCode::Right, KeyCode::D]) && 
+            keyboard_input.any_pressed([KeyCode::Down, KeyCode::S]) && 
+            !keyboard_input.any_pressed([KeyCode::Left, KeyCode::A]) {
                 // head.direction = Direction::Down;
         } else if
-            !keyboard_input.pressed(KeyCode::Up) &&
-            !keyboard_input.pressed(KeyCode::Right) && 
-            keyboard_input.pressed(KeyCode::Down) && 
-            keyboard_input.pressed(KeyCode::Left) {
+            !keyboard_input.any_pressed([KeyCode::Up, KeyCode::W]) &&
+            !keyboard_input.any_pressed([KeyCode::Right, KeyCode::D]) && 
+            keyboard_input.any_pressed([KeyCode::Down, KeyCode::S]) && 
+            keyboard_input.any_pressed([KeyCode::Left, KeyCode::A]) {
                 head.direction = Direction::DownLeft;
         } else if
-            !keyboard_input.pressed(KeyCode::Up) &&
-            !keyboard_input.pressed(KeyCode::Right) && 
-            !keyboard_input.pressed(KeyCode::Down) && 
-            keyboard_input.pressed(KeyCode::Left) {
+            !keyboard_input.any_pressed([KeyCode::Up, KeyCode::W]) &&
+            !keyboard_input.any_pressed([KeyCode::Right, KeyCode::D]) && 
+            !keyboard_input.any_pressed([KeyCode::Down, KeyCode::S]) && 
+            keyboard_input.any_pressed([KeyCode::Left, KeyCode::A]) {
                 head.direction = Direction::Left;
         } else if
-            keyboard_input.pressed(KeyCode::Up) &&
-            !keyboard_input.pressed(KeyCode::Right) && 
-            !keyboard_input.pressed(KeyCode::Down) && 
-            keyboard_input.pressed(KeyCode::Left) {
+            keyboard_input.any_pressed([KeyCode::Up, KeyCode::W]) &&
+            !keyboard_input.any_pressed([KeyCode::Right, KeyCode::D]) && 
+            !keyboard_input.any_pressed([KeyCode::Down, KeyCode::S]) && 
+            keyboard_input.any_pressed([KeyCode::Left, KeyCode::A]) {
                 head.direction = Direction::UpLeft
         } else if
             keyboard_input.pressed(KeyCode::Space) {
