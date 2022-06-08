@@ -1,9 +1,9 @@
 use bevy::prelude::*;
-use bevy_inspector_egui::{Inspectable, WorldInspectorPlugin, RegisterInspectable};
+// use bevy_inspector_egui::{Inspectable, WorldInspectorPlugin, RegisterInspectable};
 use rand::{thread_rng, Rng};
 use bevy::input::keyboard::KeyboardInput;
 use bevy::core::FixedTimestep;
-use bevy_editor_pls::prelude::*;
+// use bevy_editor_pls::prelude::*;
 
 struct CrumpleHandle(Handle<Image>);
 
@@ -35,19 +35,19 @@ struct Hex {
 #[derive(Component)]
 struct HexHistory(Vec<Hex>);
 
-#[derive(Component, Inspectable)]
+#[derive(Component)]
 struct Head {
     direction: Direction,
     last_direction: Direction
 }
 
-#[derive(Component, Inspectable)]
+#[derive(Component)]
 struct Tail;
 
 #[derive(Component)]
 struct Crumple;
 
-#[derive(Clone, Component, Inspectable, Copy, Debug, PartialEq)]
+#[derive(Clone, Component,Copy, Debug, PartialEq)]
 enum Direction {
     UpRight,
     Right,
@@ -62,16 +62,14 @@ enum Direction {
 struct Segment;
 
 fn main() {
+    #[cfg(target_arch = "wasm32")]
+    console_error_panic_hook::set_once();
     App::new()
         .add_plugins(DefaultPlugins)
-        .add_plugin(EditorPlugin)
         .add_plugin(bevy::diagnostic::FrameTimeDiagnosticsPlugin)
         .add_plugin(bevy::diagnostic::EntityCountDiagnosticsPlugin)
-        .add_plugin(WorldInspectorPlugin::new())
         .insert_resource(WorldSize(4))
         // .register_inspectable::<Hex>()
-        .register_inspectable::<Head>()
-        .register_inspectable::<Tail>()
         .add_startup_system(generate_map)
         .add_startup_system(spawn_initial_crumple)
         .add_system(spawn_crumple)
@@ -112,11 +110,17 @@ fn generate_map(
             }
         }
     }
-    let texture_handle = asset_server.load_folder("HK-Heightend Sensory Input v2/HSI - Indigo/").unwrap();
+    // let texture_handle = asset_server.load_folder("HK-Heightend Sensory Input v2/HSI - Indigo/").unwrap();
+    let mut texture_handle = Vec::new();
+    for i in 1..13 {
+        let path = format!("HK-Heightend Sensory Input v2/HSI - Indigo/HSI_indigo_{:03}.png", i);
+        texture_handle.push(asset_server.load(&path));
+    }
+
     for hex in map {
         commands.spawn_bundle(
             SpriteBundle{
-                texture: texture_handle[thread_rng().gen_range(0..texture_handle.len())].clone().typed().into(),
+                texture: texture_handle[thread_rng().gen_range(0..texture_handle.len())].clone(),
                 ..Default::default()
             })
             .insert(hex);
