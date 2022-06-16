@@ -1,10 +1,34 @@
 use bevy::{prelude::*, tasks::IoTaskPool};
+use bevy_ggrs::*;
+use ggrs::InputStatus;
 // use bevy_inspector_egui::{Inspectable, WorldInspectorPlugin, RegisterInspectable};
 use rand::{thread_rng, Rng};
 use bevy::input::keyboard::KeyboardInput;
 use bevy::core::FixedTimestep;
 // use bevy_editor_pls::prelude::*;
 use matchbox_socket::WebRtcSocket;
+
+#[derive(Component)]
+struct Player {
+    handle: usize,
+}
+
+struct GgrsConfig;
+
+impl ggrs::Config for GgrsConfig {
+    // 6-directions
+    type Input = u8;
+    type State = u8;
+    // Matchbox's WebRtcSocket addresses are strings
+    type Address = String;
+}
+
+const INPUT_UP_RIGHT: u8 = 1 << 0;
+const INPUT_RIGHT: u8 = 1 << 1;
+const INPUT_DOWN_RIGHT: u8 = 1 << 2;
+const INPUT_DOWN_LEFT: u8 = 1 << 3;
+const INPUT_LEFT: u8 = 1 << 4;
+const INPUT_UP_LEFT: u8 = 1 << 5;
 
 struct CrumpleHandle(Handle<Image>);
 
@@ -63,9 +87,27 @@ enum Direction {
 struct Segment;
 
 fn main() {
-    #[cfg(target_arch = "wasm32")]
-    console_error_panic_hook::set_once();
-    App::new()
+    let mut app = App::new();
+
+    GGRSPlugin::<GgrsConfig>::new()
+        .with_input_system(input)
+        .with_rollback_schedule(Schedule::default()
+            .with_stage(
+                "action",
+                SystemStage::single_threaded()
+                .with_system(action_system)
+            )
+            .with_stage(
+                "ROLLBACK_STAGE",
+                SystemStage::single_threaded()
+                .with_system(head_movement)
+                .with_run_criteria(FixedTimestep::step(0.75))
+            )
+        )
+        .register_rollback_type::<Transform>()
+        .build(&mut app);
+
+    app
         .add_plugins(DefaultPlugins)
         .add_plugin(bevy::diagnostic::FrameTimeDiagnosticsPlugin)
         .add_plugin(bevy::diagnostic::EntityCountDiagnosticsPlugin)
@@ -78,13 +120,6 @@ fn main() {
         .add_system(spawn_crumple)
         .add_startup_system(setup)
         .add_startup_system(spawn_snake)
-        .add_system(action_system)
-        .add_system_set(
-            SystemSet::new()
-            .label("head_movement")
-            .with_run_criteria(FixedTimestep::step(0.75))
-            .with_system(head_movement)
-        )
         .add_system(spawn_segment)
         .add_system_set(
             SystemSet::new()
@@ -150,6 +185,7 @@ fn spawn_snake(
         texture: texture_handle,
         ..Default::default()
     })
+    .insert(Player { handle: 0 })
     .insert(Hex { q: 0., r: 0., z: 1. })
     .insert(HexHistory(Vec::new()))
     .insert(Head { direction: Direction::None, last_direction: Direction::None })
@@ -168,7 +204,7 @@ fn start_matchbox_socket(mut commands: Commands, task_pool: Res<IoTaskPool>) {
     commands.insert_resource(Some(socket));
 }
 
-fn wait_for_players(mut socket: ResMut<Option<WebRtcSocket>>) {
+fn wait_for_players(mut commands: Commands, mut socket: ResMut<Option<WebRtcSocket>>) {
     let socket = socket.as_mut();
 
     // If there is no socket we've already started the game
@@ -186,6 +222,28 @@ fn wait_for_players(mut socket: ResMut<Option<WebRtcSocket>>) {
     }
 
     info!("All peers have joined, going in-game");
+
+    // create a GGRS P2P session
+    let mut session_builder = ggrs::SessionBuilder::<GgrsConfig>::new()
+        .with_num_players(num_players)
+        .with_input_delay(2);
+
+    for (i, player) in players.into_iter().enumerate() {
+        session_builder = session_builder
+            .add_player(player, i)
+            .expect("failed to add player");
+    }
+
+    // move the socket out of the resource (required because GGRS takes ownership of it)
+    let socket = socket.take().unwrap();
+
+    // start the GGRS session
+    let session = session_builder
+        .start_p2p_session(socket)
+        .expect("failed to start session");
+
+    commands.insert_resource(session);
+    commands.insert_resource(SessionType::P2PSession);
 }
 
 /// Convert hex to pixel
@@ -204,63 +262,92 @@ fn hex_to_pixel(
     }
 }
 
+fn input(_: In<ggrs::PlayerHandle>, keys: Res<Input<KeyCode>>) -> u8 {
+    let mut input = 0u8;
+    if 
+        keys.any_pressed([KeyCode::Up, KeyCode::W]) && 
+        !keys.any_pressed([KeyCode::Right, KeyCode::D]) && 
+        !keys.any_pressed([KeyCode::Down, KeyCode::S]) && 
+        !keys.any_pressed([KeyCode::Left, KeyCode::A]) {
+            // head.direction = Direction::Up;
+    } else if 
+        keys.any_pressed([KeyCode::Up, KeyCode::W]) && 
+        keys.any_pressed([KeyCode::Right, KeyCode::D]) && 
+        !keys.any_pressed([KeyCode::Down, KeyCode::S]) &&
+        !keys.any_pressed([KeyCode::Left, KeyCode::A]) {
+            input |= INPUT_UP_RIGHT;
+    } else if 
+        !keys.any_pressed([KeyCode::Up, KeyCode::W]) &&
+        keys.any_pressed([KeyCode::Right, KeyCode::D]) && 
+        !keys.any_pressed([KeyCode::Down, KeyCode::S]) && 
+        !keys.any_pressed([KeyCode::Left, KeyCode::A]) {
+            input |= INPUT_RIGHT;
+    } else if 
+        !keys.any_pressed([KeyCode::Up, KeyCode::W]) &&
+        keys.any_pressed([KeyCode::Right, KeyCode::D]) && 
+        keys.any_pressed([KeyCode::Down, KeyCode::S]) && 
+        !keys.any_pressed([KeyCode::Left, KeyCode::A]) {
+            input |= INPUT_DOWN_RIGHT;
+    } else if
+        !keys.any_pressed([KeyCode::Up, KeyCode::W]) &&
+        !keys.any_pressed([KeyCode::Right, KeyCode::D]) && 
+        keys.any_pressed([KeyCode::Down, KeyCode::S]) && 
+        !keys.any_pressed([KeyCode::Left, KeyCode::A]) {
+            // head.direction = Direction::Down;
+    } else if
+        !keys.any_pressed([KeyCode::Up, KeyCode::W]) &&
+        !keys.any_pressed([KeyCode::Right, KeyCode::D]) && 
+        keys.any_pressed([KeyCode::Down, KeyCode::S]) && 
+        keys.any_pressed([KeyCode::Left, KeyCode::A]) {
+            input |= INPUT_DOWN_LEFT;
+    } else if
+        !keys.any_pressed([KeyCode::Up, KeyCode::W]) &&
+        !keys.any_pressed([KeyCode::Right, KeyCode::D]) && 
+        !keys.any_pressed([KeyCode::Down, KeyCode::S]) && 
+        keys.any_pressed([KeyCode::Left, KeyCode::A]) {
+            input |= INPUT_LEFT;
+    } else if
+        keys.any_pressed([KeyCode::Up, KeyCode::W]) &&
+        !keys.any_pressed([KeyCode::Right, KeyCode::D]) && 
+        !keys.any_pressed([KeyCode::Down, KeyCode::S]) && 
+        keys.any_pressed([KeyCode::Left, KeyCode::A]) {
+            input |= INPUT_UP_LEFT;
+    } else if
+        keys.pressed(KeyCode::Space) {
+            // head.direction = Direction::None;
+    }
+
+    input
+}
+
 fn action_system(
-    keyboard_input: Res<Input<KeyCode>>,
-    mut query: Query<&mut Head>
+    inputs: Res<Vec<(u8, InputStatus)>>,
+    mut query: Query<(&mut Head, &Player)>
 ) {
-    if let Some(mut head) = query.iter_mut().next() {
-        if 
-            keyboard_input.any_pressed([KeyCode::Up, KeyCode::W]) && 
-            !keyboard_input.any_pressed([KeyCode::Right, KeyCode::D]) && 
-            !keyboard_input.any_pressed([KeyCode::Down, KeyCode::S]) && 
-            !keyboard_input.any_pressed([KeyCode::Left, KeyCode::A]) {
-                // head.direction = Direction::Up;
-        } else if 
-            keyboard_input.any_pressed([KeyCode::Up, KeyCode::W]) && 
-            keyboard_input.any_pressed([KeyCode::Right, KeyCode::D]) && 
-            !keyboard_input.any_pressed([KeyCode::Down, KeyCode::S]) &&
-            !keyboard_input.any_pressed([KeyCode::Left, KeyCode::A]) {
+    for (mut head, player) in query.iter_mut() {
+        let (input, _) = inputs[player.handle];
+
+        match input {
+            INPUT_UP_RIGHT => {
                 head.direction = Direction::UpRight;
-        } else if 
-            !keyboard_input.any_pressed([KeyCode::Up, KeyCode::W]) &&
-            keyboard_input.any_pressed([KeyCode::Right, KeyCode::D]) && 
-            !keyboard_input.any_pressed([KeyCode::Down, KeyCode::S]) && 
-            !keyboard_input.any_pressed([KeyCode::Left, KeyCode::A]) {
+            },
+            INPUT_RIGHT => {
                 head.direction = Direction::Right;
-        } else if 
-            !keyboard_input.any_pressed([KeyCode::Up, KeyCode::W]) &&
-            keyboard_input.any_pressed([KeyCode::Right, KeyCode::D]) && 
-            keyboard_input.any_pressed([KeyCode::Down, KeyCode::S]) && 
-            !keyboard_input.any_pressed([KeyCode::Left, KeyCode::A]) {
+            },
+            INPUT_DOWN_RIGHT => {
                 head.direction = Direction::DownRight;
-        } else if
-            !keyboard_input.any_pressed([KeyCode::Up, KeyCode::W]) &&
-            !keyboard_input.any_pressed([KeyCode::Right, KeyCode::D]) && 
-            keyboard_input.any_pressed([KeyCode::Down, KeyCode::S]) && 
-            !keyboard_input.any_pressed([KeyCode::Left, KeyCode::A]) {
-                // head.direction = Direction::Down;
-        } else if
-            !keyboard_input.any_pressed([KeyCode::Up, KeyCode::W]) &&
-            !keyboard_input.any_pressed([KeyCode::Right, KeyCode::D]) && 
-            keyboard_input.any_pressed([KeyCode::Down, KeyCode::S]) && 
-            keyboard_input.any_pressed([KeyCode::Left, KeyCode::A]) {
+            },
+            INPUT_DOWN_LEFT => {
                 head.direction = Direction::DownLeft;
-        } else if
-            !keyboard_input.any_pressed([KeyCode::Up, KeyCode::W]) &&
-            !keyboard_input.any_pressed([KeyCode::Right, KeyCode::D]) && 
-            !keyboard_input.any_pressed([KeyCode::Down, KeyCode::S]) && 
-            keyboard_input.any_pressed([KeyCode::Left, KeyCode::A]) {
+            },
+            INPUT_LEFT => {
                 head.direction = Direction::Left;
-        } else if
-            keyboard_input.any_pressed([KeyCode::Up, KeyCode::W]) &&
-            !keyboard_input.any_pressed([KeyCode::Right, KeyCode::D]) && 
-            !keyboard_input.any_pressed([KeyCode::Down, KeyCode::S]) && 
-            keyboard_input.any_pressed([KeyCode::Left, KeyCode::A]) {
-                head.direction = Direction::UpLeft
-        } else if
-            keyboard_input.pressed(KeyCode::Space) {
-                head.direction = Direction::None;
-            }
+            },
+            INPUT_UP_LEFT => {
+                head.direction = Direction::UpLeft;
+            },
+            _ => (),
+        }
     }
 }
 
