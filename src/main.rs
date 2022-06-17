@@ -178,15 +178,31 @@ fn setup(
 
 fn spawn_snake(
     mut commands: Commands,
-    asset_server: Res<AssetServer>
+    asset_server: Res<AssetServer>,
+    mut rip: ResMut<RollbackIdProvider>
 ) {
     let texture_handle = asset_server.load("HK-Heightend Sensory Input v2/HSI - Icons/HSI - Icon Geometric Light/HSI_icon_123l.png");
+
+    // player 1
     commands.spawn_bundle(SpriteBundle {
-        texture: texture_handle,
+        texture: texture_handle.clone(),
         ..Default::default()
     })
     .insert(Player { handle: 0 })
-    .insert(Hex { q: 0., r: 0., z: 1. })
+    .insert(Rollback::new(rip.next_id()))
+    .insert(Hex { q: -2., r: 0., z: 1. })
+    .insert(HexHistory(Vec::new()))
+    .insert(Head { direction: Direction::None, last_direction: Direction::None })
+    .insert(Tail);
+
+    // player 2
+    commands.spawn_bundle(SpriteBundle {
+        texture: texture_handle.clone(),
+        ..Default::default()
+    })
+    .insert(Player { handle: 1 })
+    .insert(Rollback::new(rip.next_id()))
+    .insert(Hex { q: 2., r: 0., z: 1. })
     .insert(HexHistory(Vec::new()))
     .insert(Head { direction: Direction::None, last_direction: Direction::None })
     .insert(Tail);
