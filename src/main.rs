@@ -3,10 +3,13 @@ use bevy_ggrs::*;
 use ggrs::InputStatus;
 // use bevy_inspector_egui::{Inspectable, WorldInspectorPlugin, RegisterInspectable};
 use rand::{thread_rng, Rng};
+use rand_seeder::{Seeder};
+use rand_pcg::Pcg64;
 use bevy::input::keyboard::KeyboardInput;
 use bevy::core::FixedTimestep;
 // use bevy_editor_pls::prelude::*;
 use matchbox_socket::WebRtcSocket;
+use itertools::Itertools;
 
 #[derive(Component)]
 struct Player {
@@ -253,11 +256,22 @@ fn wait_for_players(mut commands: Commands, mut socket: ResMut<Option<WebRtcSock
     // move the socket out of the resource (required because GGRS takes ownership of it)
     let socket = socket.take().unwrap();
 
+    // rng seed
+    let connected_peers = socket.connected_peers();
+
+    let peer_id = connected_peers[0].clone();
+    let id = socket.id();
+    let mut seed = id.to_owned() + &peer_id;
+    seed = seed.chars().sorted().rev().collect::<String>();
+
+    let rng: Pcg64 = Seeder::from(seed).make_rng();
+    commands.insert_resource(rng);
+
     // start the GGRS session
     let session = session_builder
         .start_p2p_session(socket)
         .expect("failed to start session");
-
+    
     commands.insert_resource(session);
     commands.insert_resource(SessionType::P2PSession);
 }
