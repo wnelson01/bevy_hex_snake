@@ -10,11 +10,11 @@ use bevy::core::FixedTimestep;
 // use bevy_editor_pls::prelude::*;
 use matchbox_socket::WebRtcSocket;
 use itertools::Itertools;
+use input::*;
+use components::{*, Direction};
 
-#[derive(Component)]
-struct Player {
-    handle: usize,
-}
+mod components;
+mod input;
 
 struct GgrsConfig;
 
@@ -25,13 +25,6 @@ impl ggrs::Config for GgrsConfig {
     // Matchbox's WebRtcSocket addresses are strings
     type Address = String;
 }
-
-const INPUT_UP_RIGHT: u8 = 1 << 0;
-const INPUT_RIGHT: u8 = 1 << 1;
-const INPUT_DOWN_RIGHT: u8 = 1 << 2;
-const INPUT_DOWN_LEFT: u8 = 1 << 3;
-const INPUT_LEFT: u8 = 1 << 4;
-const INPUT_UP_LEFT: u8 = 1 << 5;
 
 struct CrumpleHandle(Handle<Image>);
 
@@ -48,43 +41,10 @@ struct SpawnSegment();
 struct WorldSize(isize);
 
 #[derive(Component)]
-struct Following(Entity);
-
-#[derive(Component)]
-struct Follower(Entity);
-
-#[derive(Component, Clone, Copy)]
-struct Hex {
-    q: f32,
-    r: f32,
-    z: f32,
-}
-
-#[derive(Component)]
-struct HexHistory(Vec<Hex>);
-
-#[derive(Component)]
-struct Head {
-    direction: Direction,
-    last_direction: Direction
-}
-
-#[derive(Component)]
 struct Tail;
 
 #[derive(Component)]
 struct Crumple;
-
-#[derive(Clone, Component,Copy, Debug, PartialEq)]
-enum Direction {
-    UpRight,
-    Right,
-    DownRight,
-    DownLeft,
-    Left,
-    UpLeft,
-    None
-}
 
 #[derive(Component)]
 struct Segment;
@@ -93,7 +53,7 @@ fn main() {
     let mut app = App::new();
 
     GGRSPlugin::<GgrsConfig>::new()
-        .with_input_system(input)
+        .with_input_system(input::input)
         .with_rollback_schedule(Schedule::default()
             .with_stage(
                 "action",
@@ -292,64 +252,6 @@ fn hex_to_pixel(
     }
 }
 
-fn input(_: In<ggrs::PlayerHandle>, keys: Res<Input<KeyCode>>) -> u8 {
-    let mut input = 0u8;
-    if 
-        keys.any_pressed([KeyCode::Up, KeyCode::W]) && 
-        !keys.any_pressed([KeyCode::Right, KeyCode::D]) && 
-        !keys.any_pressed([KeyCode::Down, KeyCode::S]) && 
-        !keys.any_pressed([KeyCode::Left, KeyCode::A]) {
-            // head.direction = Direction::Up;
-    } else if 
-        keys.any_pressed([KeyCode::Up, KeyCode::W]) && 
-        keys.any_pressed([KeyCode::Right, KeyCode::D]) && 
-        !keys.any_pressed([KeyCode::Down, KeyCode::S]) &&
-        !keys.any_pressed([KeyCode::Left, KeyCode::A]) {
-            input |= INPUT_UP_RIGHT;
-    } else if 
-        !keys.any_pressed([KeyCode::Up, KeyCode::W]) &&
-        keys.any_pressed([KeyCode::Right, KeyCode::D]) && 
-        !keys.any_pressed([KeyCode::Down, KeyCode::S]) && 
-        !keys.any_pressed([KeyCode::Left, KeyCode::A]) {
-            input |= INPUT_RIGHT;
-    } else if 
-        !keys.any_pressed([KeyCode::Up, KeyCode::W]) &&
-        keys.any_pressed([KeyCode::Right, KeyCode::D]) && 
-        keys.any_pressed([KeyCode::Down, KeyCode::S]) && 
-        !keys.any_pressed([KeyCode::Left, KeyCode::A]) {
-            input |= INPUT_DOWN_RIGHT;
-    } else if
-        !keys.any_pressed([KeyCode::Up, KeyCode::W]) &&
-        !keys.any_pressed([KeyCode::Right, KeyCode::D]) && 
-        keys.any_pressed([KeyCode::Down, KeyCode::S]) && 
-        !keys.any_pressed([KeyCode::Left, KeyCode::A]) {
-            // head.direction = Direction::Down;
-    } else if
-        !keys.any_pressed([KeyCode::Up, KeyCode::W]) &&
-        !keys.any_pressed([KeyCode::Right, KeyCode::D]) && 
-        keys.any_pressed([KeyCode::Down, KeyCode::S]) && 
-        keys.any_pressed([KeyCode::Left, KeyCode::A]) {
-            input |= INPUT_DOWN_LEFT;
-    } else if
-        !keys.any_pressed([KeyCode::Up, KeyCode::W]) &&
-        !keys.any_pressed([KeyCode::Right, KeyCode::D]) && 
-        !keys.any_pressed([KeyCode::Down, KeyCode::S]) && 
-        keys.any_pressed([KeyCode::Left, KeyCode::A]) {
-            input |= INPUT_LEFT;
-    } else if
-        keys.any_pressed([KeyCode::Up, KeyCode::W]) &&
-        !keys.any_pressed([KeyCode::Right, KeyCode::D]) && 
-        !keys.any_pressed([KeyCode::Down, KeyCode::S]) && 
-        keys.any_pressed([KeyCode::Left, KeyCode::A]) {
-            input |= INPUT_UP_LEFT;
-    } else if
-        keys.pressed(KeyCode::Space) {
-            // head.direction = Direction::None;
-    }
-
-    input
-}
-
 fn action_system(
     inputs: Res<Vec<(u8, InputStatus)>>,
     mut query: Query<(&mut Head, &Player)>
@@ -387,17 +289,17 @@ fn head_movement(
     for (mut hex, mut head, mut hex_history) in query.iter_mut() {    
         hex_history.0.push(hex.clone());
         match head.direction {
-            Direction::UpRight => {
+            components::Direction::UpRight => {
                 hex.q += 1.;
                 hex.r -= 1.;
             },
-            Direction::Right => {
+            components::Direction::Right => {
                 hex.q += 1.;
             },
-            Direction::DownRight => {
+            components::Direction::DownRight => {
                 hex.r += 1.;
             },
-            Direction::DownLeft => {
+            components::Direction::DownLeft => {
                 hex.q -= 1.;
                 hex.r += 1.;
             },
