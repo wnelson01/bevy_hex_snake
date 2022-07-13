@@ -35,7 +35,9 @@ struct UpdateFollower {
 
 struct SpawnCrumple();
 
-struct SpawnSegment();
+struct UpdateBody(Entity, Entity);
+
+struct SpawnSegment(Entity, Entity);
 
 #[derive(Default)]
 struct WorldSize(isize);
@@ -81,6 +83,7 @@ fn main() {
         .add_startup_system(start_matchbox_socket)
         .add_system(wait_for_players)
         .add_system(spawn_crumple)
+        .add_system(update_body)
         .add_startup_system(setup)
         .add_startup_system(spawn_snake)
         .add_system(spawn_segment)
@@ -94,6 +97,7 @@ fn main() {
         .add_event::<UpdateFollower>()
         .add_event::<SpawnCrumple>()
         .add_event::<SpawnSegment>()
+        .add_event::<UpdateBody>()
         .add_system(head_crumple_collision)
         .run();
 }
@@ -147,7 +151,7 @@ fn spawn_snake(
     let texture_handle = asset_server.load("HK-Heightend Sensory Input v2/HSI - Icons/HSI - Icon Geometric Light/HSI_icon_123l.png");
 
     // player 1
-    commands.spawn_bundle(SpriteBundle {
+    let player_1 = commands.spawn_bundle(SpriteBundle {
         texture: texture_handle.clone(),
         ..Default::default()
     })
@@ -156,10 +160,13 @@ fn spawn_snake(
     .insert(Hex { q: -2., r: 0., z: 1. })
     .insert(HexHistory(Vec::new()))
     .insert(Head { direction: Direction::None, last_direction: Direction::None })
-    .insert(Tail);
+    .insert(Tail)
+    .id();
+
+    commands.entity(player_1).insert(Body(vec![player_1]));
 
     // player 2
-    commands.spawn_bundle(SpriteBundle {
+    let player_2 = commands.spawn_bundle(SpriteBundle {
         texture: texture_handle.clone(),
         ..Default::default()
     })
@@ -168,7 +175,10 @@ fn spawn_snake(
     .insert(Hex { q: 2., r: 0., z: 1. })
     .insert(HexHistory(Vec::new()))
     .insert(Head { direction: Direction::None, last_direction: Direction::None })
-    .insert(Tail);
+    .insert(Tail)
+    .id();
+
+    commands.entity(player_2).insert(Body(vec![player_2]));
 }
 
 fn start_matchbox_socket(mut commands: Commands, task_pool: Res<IoTaskPool>) {
@@ -359,14 +369,25 @@ fn spawn_crumple(
     }
 }
 
+fn update_body(
+    mut query: Query<&mut Body>,
+    mut update_body: EventReader<UpdateBody>
+) {
+    for ev in update_body.iter() {
+        let mut body = query.get_mut(ev.0).unwrap();
+        body.0.push(ev.1);
+    }
+}
+
 fn spawn_segment(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
-    query: Query<(Entity, &Hex), With<Tail>>,
-    mut spawn_segment: EventReader<SpawnSegment>
+    mut query: Query<(Entity, &Hex)>,
+    mut spawn_segment: EventReader<SpawnSegment>,
+    mut update_body: EventWriter<UpdateBody>
 ) {
-    for _ in spawn_segment.iter() {
-        let (entity, hex) = query.single();
+    for ev in spawn_segment.iter() {
+        let (entity, hex) = query.get_mut(ev.1).unwrap(); 
         commands.entity(entity).remove::<Tail>();
         let texture_handle = asset_server.load("HK-Heightend Sensory Input v2/HSI - Icons/HSI - Icon Geometric Light/HSI_icon_123l.png");
         let follower = commands.spawn_bundle(SpriteBundle {
@@ -376,8 +397,10 @@ fn spawn_segment(
         .insert(Hex { q: hex.q, r: hex.r, z: 1. })
         .insert(HexHistory(Vec::new()))
         .insert(Tail)
-        .insert(Following(entity)).id();
+        .insert(Following(entity))
+        .id();
         commands.entity(entity).insert(Follower(follower));
+        update_body.send(UpdateBody(ev.0, follower));
     }
 }
 
@@ -411,16 +434,16 @@ fn on_update_follower(
 
 fn head_crumple_collision(
     mut commands: Commands,
-    head_query: Query<&Hex, With<Head>>,
+    head_query: Query<(Entity, &Hex, &Body), With<Head>>,
     crumple_query: Query<(Entity, &Hex), With<Crumple>>,
     mut spawn_crumple: EventWriter<SpawnCrumple>,
     mut spawn_segment: EventWriter<SpawnSegment>
 ) {
-    for head_hex in head_query.iter() {
-        for (crumple_entity, crumple_hex) in crumple_query.iter() {
-            if head_hex.q == crumple_hex.q && head_hex.r == crumple_hex.r {
+    for (entity_head, hex_head, body) in head_query.iter() {
+        for (crumple_entity, hex_crumple) in crumple_query.iter() {
+            if hex_head.q == hex_crumple.q && hex_head.r == hex_crumple.r {
                 commands.entity(crumple_entity).despawn();
-                spawn_segment.send(SpawnSegment());
+                spawn_segment.send(SpawnSegment(entity_head, *body.0.last().unwrap()));
                 spawn_crumple.send(SpawnCrumple());
             }
         }

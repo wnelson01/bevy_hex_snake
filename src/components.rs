@@ -37,3 +37,6 @@ pub struct Head {
     pub direction: Direction,
     pub last_direction: Direction
 }
+
+#[derive(Component)]
+pub struct Body(pub Vec<Entity>);
