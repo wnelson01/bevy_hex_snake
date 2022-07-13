@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use rand_pcg::Pcg64;
 
 #[derive(Clone,Component,Copy, Debug, PartialEq)]
 pub enum Direction {
@@ -22,7 +23,7 @@ pub struct Following(pub Entity);
 #[derive(Component)]
 pub struct Follower(pub Entity);
 
-#[derive(Component, Clone, Copy)]
+#[derive(Component, Reflect, Default, Clone, Copy)]
 pub struct Hex {
     pub q: f32,
     pub r: f32,
@@ -40,3 +41,15 @@ pub struct Head {
 
 #[derive(Component)]
 pub struct Body(pub Vec<Entity>);
+
+#[derive(Component)]
+pub struct Tail;
+
+#[derive(Component)]
+pub struct Crumple;
+
+#[derive(Component)]
+pub struct Segment;
+
+#[derive(Component)]
+pub struct RandomNumberGenerator(pub Pcg64);

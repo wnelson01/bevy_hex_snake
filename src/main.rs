@@ -42,15 +42,6 @@ struct SpawnSegment(Entity, Entity);
 #[derive(Default)]
 struct WorldSize(isize);
 
-#[derive(Component)]
-struct Tail;
-
-#[derive(Component)]
-struct Crumple;
-
-#[derive(Component)]
-struct Segment;
-
 fn main() {
     let mut app = App::new();
 
@@ -61,6 +52,12 @@ fn main() {
                 "action",
                 SystemStage::single_threaded()
                 .with_system(action_system)
+                .with_system_set(
+                    SystemSet::new()
+                    .with_system(update_follower)
+                    .with_system(on_update_follower)
+                )
+                .with_system(spawn_crumple)
             )
             .with_stage(
                 "ROLLBACK_STAGE",
@@ -70,6 +67,7 @@ fn main() {
             )
         )
         .register_rollback_type::<Transform>()
+        .register_rollback_type::<Hex>()
         .build(&mut app);
 
     app
@@ -82,16 +80,16 @@ fn main() {
         .add_startup_system(spawn_initial_crumple)
         .add_startup_system(start_matchbox_socket)
         .add_system(wait_for_players)
-        .add_system(spawn_crumple)
+        // .add_system(spawn_crumple)
         .add_system(update_body)
         .add_startup_system(setup)
         .add_startup_system(spawn_snake)
         .add_system(spawn_segment)
-        .add_system_set(
-            SystemSet::new()
-            .with_system(update_follower)
-            .with_system(on_update_follower)
-        )
+        // .add_system_set(
+            // SystemSet::new()
+            // .with_system(update_follower)
+            // .with_system(on_update_follower)
+        // )
         .add_system(hex_to_pixel.label("hex_to_pixel"))
         .add_system(keyboard_events)
         .add_event::<UpdateFollower>()
@@ -235,7 +233,7 @@ fn wait_for_players(mut commands: Commands, mut socket: ResMut<Option<WebRtcSock
     seed = seed.chars().sorted().rev().collect::<String>();
 
     let rng: Pcg64 = Seeder::from(seed).make_rng();
-    commands.insert_resource(rng);
+    commands.spawn().insert(RandomNumberGenerator(rng));
 
     // start the GGRS session
     let session = session_builder
@@ -351,7 +349,7 @@ fn spawn_crumple(
     mut commands: Commands,
     world_size: Res<WorldSize>,
     mut spawn_crumple: EventReader<SpawnCrumple>,
-    handle: Res<CrumpleHandle>
+    handle: Res<CrumpleHandle>,
 ) {
     for _ in spawn_crumple.iter() {
         commands.spawn_bundle(
