@@ -1,17 +1,12 @@
 use bevy::{prelude::*, tasks::IoTaskPool};
 use bevy_ggrs::*;
 use ggrs::InputStatus;
-// use bevy_inspector_egui::{Inspectable, WorldInspectorPlugin, RegisterInspectable};
 use rand::{thread_rng, Rng};
-use rand_seeder::{Seeder};
 use bevy::input::keyboard::KeyboardInput;
 use bevy::core::FixedTimestep;
-// use bevy_editor_pls::prelude::*;
 use matchbox_socket::WebRtcSocket;
-use itertools::Itertools;
 use input::*;
 use components::{*, Direction};
-
 mod components;
 mod input;
 
@@ -55,18 +50,22 @@ fn main() {
                     SystemSet::new()
                     .with_system(update_follower)
                     .with_system(on_update_follower)
+                    .with_system(spawn_crumple)
                 )
-                .with_system(spawn_crumple)
             )
             .with_stage(
                 "ROLLBACK_STAGE",
                 SystemStage::single_threaded()
                 .with_system(head_movement)
+                .with_system(spawn_initial_crumple)
+                .with_system(spawn_crumple)
                 .with_run_criteria(FixedTimestep::step(0.75))
             )
         )
         .register_rollback_type::<Transform>()
         .register_rollback_type::<Hex>()
+        .register_rollback_type::<Pcg32RandomT>()
+        .register_rollback_type::<Crumple>()
         .build(&mut app);
 
     app
@@ -74,21 +73,15 @@ fn main() {
         .add_plugin(bevy::diagnostic::FrameTimeDiagnosticsPlugin)
         .add_plugin(bevy::diagnostic::EntityCountDiagnosticsPlugin)
         .insert_resource(WorldSize(4))
-        // .register_inspectable::<Hex>()
         .add_startup_system(generate_map)
-        .add_startup_system(spawn_initial_crumple)
+        // .add_startup_system(spawn_initial_crumple)
+        // .add_system(spawn_crumple)
         .add_startup_system(start_matchbox_socket)
         .add_system(wait_for_players)
-        // .add_system(spawn_crumple)
         .add_system(update_body)
         .add_startup_system(setup)
         .add_startup_system(spawn_snake)
         .add_system(spawn_segment)
-        // .add_system_set(
-            // SystemSet::new()
-            // .with_system(update_follower)
-            // .with_system(on_update_follower)
-        // )
         .add_system(hex_to_pixel.label("hex_to_pixel"))
         .add_system(keyboard_events)
         .add_event::<UpdateFollower>()
@@ -190,7 +183,10 @@ fn start_matchbox_socket(mut commands: Commands, task_pool: Res<IoTaskPool>) {
     commands.insert_resource(Some(socket));
 }
 
-fn wait_for_players(mut commands: Commands, mut socket: ResMut<Option<WebRtcSocket>>) {
+fn wait_for_players(
+    mut commands: Commands, 
+    mut socket: ResMut<Option<WebRtcSocket>>, 
+) {
     let socket = socket.as_mut();
 
     // If there is no socket we've already started the game
@@ -226,13 +222,15 @@ fn wait_for_players(mut commands: Commands, mut socket: ResMut<Option<WebRtcSock
     // rng seed
     let connected_peers = socket.connected_peers();
 
-    let peer_id = connected_peers[0].clone();
-    let id = socket.id();
-    let mut seed = id.to_owned() + &peer_id;
-    seed = seed.chars().sorted().rev().collect::<String>();
+    let peer_id = connected_peers[0].clone().chars().filter(|c| c.is_digit(10)).collect::<String>().parse::<u128>().unwrap();
+    let self_id = socket.id().chars().filter(|c| c.is_digit(10)).collect::<String>().parse::<u128>().unwrap();
+    info!("peer id: {}", peer_id);
+    info!("peer id: {}", self_id);
+    let seed = u64::wrapping_mul(peer_id as u64, self_id as u64) as u64;
+    info!("{}", seed);
 
-    let rng = Pcg32RandomT::new(seed.parse::<u64>().unwrap(), 1);
-    commands.spawn().insert(rng);
+    let rng = Pcg32RandomT::new(seed, 1);
+    commands.insert_resource(rng);
 
     // start the GGRS session
     let session = session_builder
@@ -339,9 +337,12 @@ fn keyboard_events(
 }
 
 fn spawn_initial_crumple(
-    mut spawn_crumple: EventWriter<SpawnCrumple>
+    mut spawn_crumple: EventWriter<SpawnCrumple>,
+    query: Query<&Crumple>
 ) {
-    spawn_crumple.send(SpawnCrumple());
+    if query.iter().count() == 0 {
+        spawn_crumple.send(SpawnCrumple());
+    }
 }
 
 fn spawn_crumple(
@@ -349,8 +350,10 @@ fn spawn_crumple(
     world_size: Res<WorldSize>,
     mut spawn_crumple: EventReader<SpawnCrumple>,
     handle: Res<CrumpleHandle>,
+    mut rng: ResMut<Pcg32RandomT>
 ) {
     for _ in spawn_crumple.iter() {
+        info!("spawn crumple {}", rng.pcg32_random_r());
         commands.spawn_bundle(
             SpriteBundle {
                 texture: handle.0.clone(),
@@ -358,8 +361,10 @@ fn spawn_crumple(
             }
         )
         .insert(Hex {
-            q: (rand::thread_rng().gen_range(-world_size.0..=world_size.0)) as f32,
-            r: (rand::thread_rng().gen_range(-world_size.0..=world_size.0)) as f32,
+            q: (rng.pcg32_random_r() as f32 % world_size.0 as f32),
+            r: (rng.pcg32_random_r() as f32 % world_size.0 as f32),
+            // q: (rand::thread_rng().gen_range(-world_size.0..=world_size.0)) as f32,
+            // r: (rand::thread_rng().gen_range(-world_size.0..=world_size.0)) as f32,
             z: 1.
         })
         .insert(Crumple);
@@ -446,3 +451,9 @@ fn head_crumple_collision(
         }
     }
 }
+
+// fn rng_test(
+//     mut rng: ResMut<Pcg32RandomT>
+// ) {
+//     info!("{}", rng.pcg32_random_r());
+// }

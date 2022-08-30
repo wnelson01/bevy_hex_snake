@@ -1,5 +1,4 @@
 use bevy::prelude::*;
-use rand_pcg::Pcg32;
 
 #[derive(Clone,Component,Copy, Debug, PartialEq)]
 pub enum Direction {
@@ -45,7 +44,7 @@ pub struct Body(pub Vec<Entity>);
 #[derive(Component)]
 pub struct Tail;
 
-#[derive(Component)]
+#[derive(Reflect, Default, Component)]
 pub struct Crumple;
 
 #[derive(Component)]
@@ -53,6 +52,7 @@ pub struct Segment;
 
 
 #[derive(Default, Reflect, Hash, Component)]
+#[reflect(Hash)]
 pub struct Pcg32RandomT {
     state: u64,
     inc: u64
