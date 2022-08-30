@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use rand_pcg::Pcg64;
+use rand_pcg::Pcg32;
 
 #[derive(Clone,Component,Copy, Debug, PartialEq)]
 pub enum Direction {
@@ -51,5 +51,26 @@ pub struct Crumple;
 #[derive(Component)]
 pub struct Segment;
 
-#[derive(Component)]
-pub struct RandomNumberGenerator(pub Pcg64);
+
+#[derive(Default, Reflect, Hash, Component)]
+pub struct Pcg32RandomT {
+    state: u64,
+    inc: u64
+}
+
+impl Pcg32RandomT {    
+    
+    pub fn new(initstate: u64, initseq: u64) -> Self {
+        Self{state: initstate, inc: (initseq << 1u64) | 1u64,}
+    }
+
+    pub fn pcg32_random_r(&mut self) -> u64 {
+        let oldstate = self.state;
+        // Advance internal state
+        self.state = oldstate * 6364136223846793005u64 + self.inc;
+        // Calculate output function (XSH RR), uses old state for max ILP
+        let xorshifted = ((oldstate >> 18) ^ oldstate) >> 27 as u32;
+        let rot = oldstate >> 59;
+        return (xorshifted >> rot) | (xorshifted << ((rot.wrapping_neg()) & 31));
+    }
+}

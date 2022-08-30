@@ -4,7 +4,6 @@ use ggrs::InputStatus;
 // use bevy_inspector_egui::{Inspectable, WorldInspectorPlugin, RegisterInspectable};
 use rand::{thread_rng, Rng};
 use rand_seeder::{Seeder};
-use rand_pcg::Pcg64;
 use bevy::input::keyboard::KeyboardInput;
 use bevy::core::FixedTimestep;
 // use bevy_editor_pls::prelude::*;
@@ -232,8 +231,8 @@ fn wait_for_players(mut commands: Commands, mut socket: ResMut<Option<WebRtcSock
     let mut seed = id.to_owned() + &peer_id;
     seed = seed.chars().sorted().rev().collect::<String>();
 
-    let rng: Pcg64 = Seeder::from(seed).make_rng();
-    commands.spawn().insert(RandomNumberGenerator(rng));
+    let rng = Pcg32RandomT::new(seed.parse::<u64>().unwrap(), 1);
+    commands.spawn().insert(rng);
 
     // start the GGRS session
     let session = session_builder
