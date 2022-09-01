@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use bevy_inspector_egui::{Inspectable, WorldInspectorPlugin, RegisterInspectable};
 use rand::{thread_rng, Rng};
 use bevy::input::keyboard::KeyboardInput;
-use bevy::core::FixedTimestep;
+use bevy::time::FixedTimestep;
 use bevy_editor_pls::prelude::*;
 
 struct CrumpleHandle(Handle<Image>);
@@ -127,7 +127,7 @@ fn setup(
     mut commands: Commands,
     server: Res<AssetServer>
 ) {
-    let mut camera = OrthographicCameraBundle::new_2d();
+    let mut camera = Camera2dBundle::default();
     camera.transform.scale = Vec3::new(3.0, 3.0, 1.0);
     commands.spawn_bundle(camera);
     let handle: Handle<Image> = server.load("HK-Heightend Sensory Input v2/HSI - Icons/HSI - Icon Geometric Light/HSI_icon_109l.png");
@@ -260,13 +260,13 @@ fn head_movement(
 fn keyboard_events(
     mut key_evr: EventReader<KeyboardInput>,
 ) {
-    use bevy::input::ElementState;
+    use bevy::input::ButtonState;
     for ev in key_evr.iter() {
         match ev.state {
-            ElementState::Pressed => {
+            ButtonState::Pressed => {
                 println!("Key press: {:?} ({})", ev.key_code, ev.scan_code);
             }
-            ElementState::Released => {
+            ButtonState::Released => {
                 println!("Key release: {:?} ({})", ev.key_code, ev.scan_code);
             }
         }

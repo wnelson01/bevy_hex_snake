@@ -1,5 +1,5 @@
 [package]
-name = "bevy_hex"
+name = "bevy_hex_snake"
 version = "0.1.0"
 edition = "2021"
 
@@ -10,9 +10,9 @@ opt-level = 1
 opt-level = 3
 
 [dependencies]
-bevy = { version = "0.7.0", features = ["dynamic"] }
+bevy = { version = "0.8", features = ["dynamic"] }
 rand = "0.8.0"
-bevy-inspector-egui = "0.10.0"
+bevy-inspector-egui = "0.12.1"
 bevy_editor_pls = {git = "https://github.com/jakobhellermann/bevy_editor_pls"}
 
 [workspace]
