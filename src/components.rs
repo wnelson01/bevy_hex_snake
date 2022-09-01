@@ -44,11 +44,16 @@ pub struct Body(pub Vec<Entity>);
 #[derive(Component)]
 pub struct Tail;
 
-#[derive(Reflect, Default, Component)]
+#[derive(Component, Reflect, Default)]
 pub struct Crumple;
 
-#[derive(Component)]
+#[derive(Component, Reflect, Default)]
 pub struct Segment;
+
+#[derive(Component, Reflect, Default)]
+pub struct MovementCooldown {
+    pub timer: Timer,
+}
 
 
 #[derive(Default, Reflect, Hash, Component)]

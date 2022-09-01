@@ -3,10 +3,10 @@ use bevy_ggrs::*;
 use ggrs::InputStatus;
 use rand::{thread_rng, Rng};
 use bevy::input::keyboard::KeyboardInput;
-use bevy::core::FixedTimestep;
 use matchbox_socket::WebRtcSocket;
 use input::*;
 use components::{*, Direction};
+use std::time::Duration;
 mod components;
 mod input;
 
@@ -18,6 +18,12 @@ impl ggrs::Config for GgrsConfig {
     type State = u8;
     // Matchbox's WebRtcSocket addresses are strings
     type Address = String;
+}
+
+#[derive(Clone, Eq, PartialEq, Debug, Hash)]
+enum GameState {
+    Matchmaking,
+    InGame,
 }
 
 struct CrumpleHandle(Handle<Image>);
@@ -46,49 +52,53 @@ fn main() {
                 "action",
                 SystemStage::single_threaded()
                 .with_system(action_system)
+                .with_system(update_body)
+                .with_system(spawn_segment)
+                .with_system(hex_to_pixel.label("hex_to_pixel"))
+                .with_system(head_movement)
+                .with_system(head_crumple_collision)
                 .with_system_set(
                     SystemSet::new()
                     .with_system(update_follower)
                     .with_system(on_update_follower)
-                    .with_system(spawn_crumple)
                 )
             )
-            .with_stage(
-                "ROLLBACK_STAGE",
-                SystemStage::single_threaded()
-                .with_system(head_movement)
-                .with_system(spawn_initial_crumple)
-                .with_system(spawn_crumple)
-                .with_run_criteria(FixedTimestep::step(0.75))
-            )
+            // .with_stage(
+            //     "ROLLBACK_STAGE",
+            //     SystemStage::single_threaded()
+            //     .with_system(head_movement)
+            //     .with_run_criteria(FixedTimestep::step(0.75))
+            // )
         )
         .register_rollback_type::<Transform>()
         .register_rollback_type::<Hex>()
         .register_rollback_type::<Pcg32RandomT>()
         .register_rollback_type::<Crumple>()
+        .register_rollback_type::<Segment>()
+        .register_rollback_type::<MovementCooldown>()
         .build(&mut app);
 
     app
+        .add_state(GameState::Matchmaking)
         .add_plugins(DefaultPlugins)
         .add_plugin(bevy::diagnostic::FrameTimeDiagnosticsPlugin)
         .add_plugin(bevy::diagnostic::EntityCountDiagnosticsPlugin)
         .insert_resource(WorldSize(4))
         .add_startup_system(generate_map)
-        // .add_startup_system(spawn_initial_crumple)
-        // .add_system(spawn_crumple)
-        .add_startup_system(start_matchbox_socket)
-        .add_system(wait_for_players)
-        .add_system(update_body)
-        .add_startup_system(setup)
+        .add_system_set(
+            SystemSet::on_enter(GameState::Matchmaking)
+                .with_system(start_matchbox_socket)
+                .with_system(setup),
+        )
         .add_startup_system(spawn_snake)
-        .add_system(spawn_segment)
-        .add_system(hex_to_pixel.label("hex_to_pixel"))
         .add_system(keyboard_events)
         .add_event::<UpdateFollower>()
         .add_event::<SpawnCrumple>()
         .add_event::<SpawnSegment>()
         .add_event::<UpdateBody>()
-        .add_system(head_crumple_collision)
+        .add_system_set(SystemSet::on_update(GameState::Matchmaking).with_system(wait_for_players))
+        .add_system_set(SystemSet::on_enter(GameState::InGame).with_system(spawn_initial_crumple).with_system(spawn_crumple))
+        .add_system_set(SystemSet::on_update(GameState::InGame).with_system(spawn_crumple))
         .run();
 }
 
@@ -126,7 +136,7 @@ fn setup(
     mut commands: Commands,
     server: Res<AssetServer>
 ) {
-    let mut camera = OrthographicCameraBundle::new_2d();
+    let mut camera = Camera2dBundle::default();
     camera.transform.scale = Vec3::new(3.0, 3.0, 1.0);
     commands.spawn_bundle(camera);
     let handle: Handle<Image> = server.load("HK-Heightend Sensory Input v2/HSI - Icons/HSI - Icon Geometric Light/HSI_icon_109l.png");
@@ -151,6 +161,7 @@ fn spawn_snake(
     .insert(HexHistory(Vec::new()))
     .insert(Head { direction: Direction::None, last_direction: Direction::None })
     .insert(Tail)
+    .insert(MovementCooldown { timer: Timer::new(Duration::from_millis(750), true)})
     .id();
 
     commands.entity(player_1).insert(Body(vec![player_1]));
@@ -166,18 +177,20 @@ fn spawn_snake(
     .insert(HexHistory(Vec::new()))
     .insert(Head { direction: Direction::None, last_direction: Direction::None })
     .insert(Tail)
+    .insert(MovementCooldown { timer: Timer::new(Duration::from_millis(750), true)})
     .id();
 
     commands.entity(player_2).insert(Body(vec![player_2]));
 }
 
-fn start_matchbox_socket(mut commands: Commands, task_pool: Res<IoTaskPool>) {
+fn start_matchbox_socket(mut commands: Commands) {
     let room_url = "ws://127.0.0.1:3536/next_2";
     info!("connecting to matchbox server: {:?}", room_url);
     let (socket, message_loop) = WebRtcSocket::new(room_url);
 
     // The message loop needs to be awaited, or nothing will happen.
     // We do this here using bevy's task system.
+    let task_pool = IoTaskPool::get();
     task_pool.spawn(message_loop).detach();
 
     commands.insert_resource(Some(socket));
@@ -185,7 +198,8 @@ fn start_matchbox_socket(mut commands: Commands, task_pool: Res<IoTaskPool>) {
 
 fn wait_for_players(
     mut commands: Commands, 
-    mut socket: ResMut<Option<WebRtcSocket>>, 
+    mut socket: ResMut<Option<WebRtcSocket>>,
+    mut state: ResMut<State<GameState>>, 
 ) {
     let socket = socket.as_mut();
 
@@ -239,6 +253,8 @@ fn wait_for_players(
     
     commands.insert_resource(session);
     commands.insert_resource(SessionType::P2PSession);
+
+    state.set(GameState::InGame).unwrap();
 }
 
 /// Convert hex to pixel
@@ -289,47 +305,51 @@ fn action_system(
 }
 
 fn head_movement(
-    mut query: Query<(&mut Hex, &mut Head, &mut HexHistory)>
+    mut query: Query<(&mut Hex, &mut Head, &mut HexHistory, &mut MovementCooldown)>,
+    time: Res<Time>,
 ) {
-    for (mut hex, mut head, mut hex_history) in query.iter_mut() {    
-        hex_history.0.push(hex.clone());
-        match head.direction {
-            components::Direction::UpRight => {
-                hex.q += 1.;
-                hex.r -= 1.;
-            },
-            components::Direction::Right => {
-                hex.q += 1.;
-            },
-            components::Direction::DownRight => {
-                hex.r += 1.;
-            },
-            components::Direction::DownLeft => {
-                hex.q -= 1.;
-                hex.r += 1.;
-            },
-            Direction::Left => {
-                hex.q -= 1.;
-            },
-            Direction::UpLeft => {
-                hex.r -= 1.;
-            },
-            Direction::None => (),
+    for (mut hex, mut head, mut hex_history, mut movement_cooldown) in query.iter_mut() {
+        movement_cooldown.timer.tick(time.delta());
+        if movement_cooldown.timer.finished() {
+            hex_history.0.push(hex.clone());
+            match head.direction {
+                components::Direction::UpRight => {
+                    hex.q += 1.;
+                    hex.r -= 1.;
+                },
+                components::Direction::Right => {
+                    hex.q += 1.;
+                },
+                components::Direction::DownRight => {
+                    hex.r += 1.;
+                },
+                components::Direction::DownLeft => {
+                    hex.q -= 1.;
+                    hex.r += 1.;
+                },
+                Direction::Left => {
+                    hex.q -= 1.;
+                },
+                Direction::UpLeft => {
+                    hex.r -= 1.;
+                },
+                Direction::None => (),
+            }
+            head.last_direction = head.direction;
         }
-        head.last_direction = head.direction;
     }
 }
 
 fn keyboard_events(
     mut key_evr: EventReader<KeyboardInput>,
 ) {
-    use bevy::input::ElementState;
+    use bevy::input::ButtonState;
     for ev in key_evr.iter() {
         match ev.state {
-            ElementState::Pressed => {
+            ButtonState::Pressed => {
                 println!("Key press: {:?} ({})", ev.key_code, ev.scan_code);
             }
-            ElementState::Released => {
+            ButtonState::Released => {
                 println!("Key release: {:?} ({})", ev.key_code, ev.scan_code);
             }
         }
@@ -338,15 +358,14 @@ fn keyboard_events(
 
 fn spawn_initial_crumple(
     mut spawn_crumple: EventWriter<SpawnCrumple>,
-    query: Query<&Crumple>
 ) {
-    if query.iter().count() == 0 {
-        spawn_crumple.send(SpawnCrumple());
-    }
+    info!("spawn initial crumple");
+    spawn_crumple.send(SpawnCrumple());
 }
 
 fn spawn_crumple(
     mut commands: Commands,
+    mut rip: ResMut<RollbackIdProvider>,
     world_size: Res<WorldSize>,
     mut spawn_crumple: EventReader<SpawnCrumple>,
     handle: Res<CrumpleHandle>,
@@ -367,7 +386,8 @@ fn spawn_crumple(
             // r: (rand::thread_rng().gen_range(-world_size.0..=world_size.0)) as f32,
             z: 1.
         })
-        .insert(Crumple);
+        .insert(Crumple)
+        .insert(Rollback::new(rip.next_id()));
     }
 }
 
@@ -383,6 +403,7 @@ fn update_body(
 
 fn spawn_segment(
     mut commands: Commands,
+    mut rip: ResMut<RollbackIdProvider>,
     asset_server: Res<AssetServer>,
     mut query: Query<(Entity, &Hex)>,
     mut spawn_segment: EventReader<SpawnSegment>,
@@ -397,6 +418,7 @@ fn spawn_segment(
             ..Default::default()
         })
         .insert(Hex { q: hex.q, r: hex.r, z: 1. })
+        .insert(Rollback::new(rip.next_id()))
         .insert(HexHistory(Vec::new()))
         .insert(Tail)
         .insert(Following(entity))
