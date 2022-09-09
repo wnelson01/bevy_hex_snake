@@ -388,8 +388,14 @@ fn spawn_crumple(
     mut rng: ResMut<Pcg32RandomT>
 ) {
     for _ in spawn_crumple.iter() {
-        let q = rng.pcg32_random_r() as f32 % world_size.0 as f32;
-        let r = rng.pcg32_random_r() as f32 % world_size.0 as f32;
+        // random number between a set range = bounded_rand(max - min) + min
+        info!("rng: {}", rng.pcg32_random_r());
+        let q = (rng.pcg32_random_r() % 8) as f32 - 4.;
+        let r = (rng.pcg32_random_r() % 8) as f32 - 4.;
+        // let q = (rng.bounded_rand(8) - 4) as f32;
+        // let r = (rng.bounded_rand(8) - 4) as f32;
+        // let q = (rng.bounded_rand((world_size.0 - (-world_size.0)) as u32) + -world_size.0 as u32) as f32;
+        // let r = (rng.bounded_rand((world_size.0 - (-world_size.0)) as u32) + -world_size.0 as u32) as f32;
         info!("q: {}, r: {}", q, r);
         info!("spawning crumple");
         commands.spawn_bundle(
