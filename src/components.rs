@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-#[derive(Clone,Component,Copy, Debug, PartialEq)]
+#[derive(Clone,Component,Reflect, Default, Copy, Debug, PartialEq)]
 pub enum Direction {
     UpRight,
     Right,
@@ -8,6 +8,7 @@ pub enum Direction {
     DownLeft,
     Left,
     UpLeft,
+    #[default]
     None
 }
 
@@ -32,16 +33,16 @@ pub struct Hex {
 #[derive(Component)]
 pub struct HexHistory(pub Vec<Hex>);
 
-#[derive(Component)]
+#[derive(Component, Reflect, Default)]
 pub struct Head {
     pub direction: Direction,
     pub last_direction: Direction
 }
 
-#[derive(Component)]
+#[derive(Component, Reflect, Default)]
 pub struct Body(pub Vec<Entity>);
 
-#[derive(Component)]
+#[derive(Component, Reflect, Default)]
 pub struct Tail;
 
 #[derive(Component, Reflect, Default)]
@@ -74,8 +75,9 @@ impl Pcg32RandomT {
         // Advance internal state
         self.state = oldstate * 6364136223846793005u64 + self.inc;
         // Calculate output function (XSH RR), uses old state for max ILP
-        let xorshifted = ((oldstate >> 18) ^ oldstate) >> 27 as u32;
+        let xorshifted = ((oldstate >> 18) ^ oldstate) >> 27_u32;
         let rot = oldstate >> 59;
         return (xorshifted >> rot) | (xorshifted << ((rot.wrapping_neg()) & 31));
     }
+
 }

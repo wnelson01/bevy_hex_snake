@@ -10,12 +10,14 @@ opt-level = 1
 opt-level = 3
 
 [dependencies]
+wasm-bindgen = { version = "= 0.2.81" }
 bevy = { version = "0.8" }
 rand = "0.8.0"
 # bevy-inspector-egui = "0.11.0"
 # bevy_editor_pls = {git = "https://github.com/jakobhellermann/bevy_editor_pls"}
 ggrs = "0.9"
-bevy_ggrs = { version = "0.10", features = ["wasm-bindgen"] }
+# bevy_ggrs = { version = "0.10", features = ["wasm-bindgen"] }
+bevy_ggrs = "0.10.0"
 console_error_panic_hook = "0.1"
 matchbox_socket = { version = "0.3", features = ["ggrs-socket"] }
 itertools = "0.9.0"

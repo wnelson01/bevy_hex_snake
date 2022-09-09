@@ -26,6 +26,18 @@ enum GameState {
     InGame,
 }
 
+#[derive(SystemLabel, Debug, Clone, Hash, Eq, PartialEq)]
+enum Systems {
+    ActionSystem,
+    HeadMovement,
+    HexToPixel,
+    HeadCrumpleCollision,
+    SpawnSegment,
+    SpawnCrumple,
+    UpdateFollower,
+    OnUpdateFollower,
+}
+
 struct CrumpleHandle(Handle<Image>);
 
 struct UpdateFollower {
@@ -33,6 +45,7 @@ struct UpdateFollower {
     hex: Hex
 }
 
+#[derive(Default, Reflect, Component)]
 struct SpawnCrumple();
 
 struct UpdateBody(Entity, Entity);
@@ -51,17 +64,15 @@ fn main() {
             .with_stage(
                 "action",
                 SystemStage::single_threaded()
-                .with_system(action_system)
+                .with_system(action_system.label(Systems::ActionSystem))
+                .with_system(head_movement.label(Systems::HeadMovement).after(Systems::ActionSystem))
                 .with_system(update_body)
-                .with_system(spawn_segment)
-                .with_system(hex_to_pixel.label("hex_to_pixel"))
-                .with_system(head_movement)
-                .with_system(head_crumple_collision)
-                .with_system_set(
-                    SystemSet::new()
-                    .with_system(update_follower)
-                    .with_system(on_update_follower)
-                )
+                .with_system(hex_to_pixel.label(Systems::HexToPixel).after(Systems::HeadMovement))
+                .with_system(head_crumple_collision.label(Systems::HeadCrumpleCollision).after(Systems::HeadMovement))
+                .with_system(spawn_segment.label(Systems::SpawnSegment).after(Systems::HeadCrumpleCollision))
+                .with_system(spawn_crumple.label(Systems::SpawnCrumple).after(Systems::HeadCrumpleCollision))
+                .with_system(update_follower.label(Systems::UpdateFollower).after(Systems::HeadMovement))
+                .with_system(on_update_follower.label(Systems::OnUpdateFollower).after(Systems::UpdateFollower))
             )
             // .with_stage(
             //     "ROLLBACK_STAGE",
@@ -70,12 +81,16 @@ fn main() {
             //     .with_run_criteria(FixedTimestep::step(0.75))
             // )
         )
+        .register_rollback_type::<Head>()
+        .register_rollback_type::<Tail>()
         .register_rollback_type::<Transform>()
         .register_rollback_type::<Hex>()
         .register_rollback_type::<Pcg32RandomT>()
         .register_rollback_type::<Crumple>()
         .register_rollback_type::<Segment>()
         .register_rollback_type::<MovementCooldown>()
+        .register_rollback_type::<Body>()
+        .register_rollback_type::<SpawnCrumple>()
         .build(&mut app);
 
     app
@@ -84,6 +99,7 @@ fn main() {
         .add_plugin(bevy::diagnostic::FrameTimeDiagnosticsPlugin)
         .add_plugin(bevy::diagnostic::EntityCountDiagnosticsPlugin)
         .insert_resource(WorldSize(4))
+        .insert_resource(bevy::ecs::schedule::ReportExecutionOrderAmbiguities)
         .add_startup_system(generate_map)
         .add_system_set(
             SystemSet::on_enter(GameState::Matchmaking)
@@ -93,12 +109,12 @@ fn main() {
         .add_startup_system(spawn_snake)
         .add_system(keyboard_events)
         .add_event::<UpdateFollower>()
-        .add_event::<SpawnCrumple>()
+        .init_resource::<Events<SpawnCrumple>>()
         .add_event::<SpawnSegment>()
         .add_event::<UpdateBody>()
         .add_system_set(SystemSet::on_update(GameState::Matchmaking).with_system(wait_for_players))
-        .add_system_set(SystemSet::on_enter(GameState::InGame).with_system(spawn_initial_crumple).with_system(spawn_crumple))
-        .add_system_set(SystemSet::on_update(GameState::InGame).with_system(spawn_crumple))
+        .add_system_set(SystemSet::on_enter(GameState::InGame).with_system(spawn_initial_crumple))
+        // .add_system_set(SystemSet::on_update(GameState::InGame).with_system(spawn_crumple))
         .run();
 }
 
@@ -359,7 +375,7 @@ fn keyboard_events(
 fn spawn_initial_crumple(
     mut spawn_crumple: EventWriter<SpawnCrumple>,
 ) {
-    info!("spawn initial crumple");
+    info!("spawning initial crumple");
     spawn_crumple.send(SpawnCrumple());
 }
 
@@ -372,7 +388,10 @@ fn spawn_crumple(
     mut rng: ResMut<Pcg32RandomT>
 ) {
     for _ in spawn_crumple.iter() {
-        info!("spawn crumple {}", rng.pcg32_random_r());
+        let q = rng.pcg32_random_r() as f32 % world_size.0 as f32;
+        let r = rng.pcg32_random_r() as f32 % world_size.0 as f32;
+        info!("q: {}, r: {}", q, r);
+        info!("spawning crumple");
         commands.spawn_bundle(
             SpriteBundle {
                 texture: handle.0.clone(),
@@ -380,8 +399,8 @@ fn spawn_crumple(
             }
         )
         .insert(Hex {
-            q: (rng.pcg32_random_r() as f32 % world_size.0 as f32),
-            r: (rng.pcg32_random_r() as f32 % world_size.0 as f32),
+            q: q,
+            r: r,
             // q: (rand::thread_rng().gen_range(-world_size.0..=world_size.0)) as f32,
             // r: (rand::thread_rng().gen_range(-world_size.0..=world_size.0)) as f32,
             z: 1.
@@ -410,6 +429,7 @@ fn spawn_segment(
     mut update_body: EventWriter<UpdateBody>
 ) {
     for ev in spawn_segment.iter() {
+        info!("Spawning Segment");
         let (entity, hex) = query.get_mut(ev.1).unwrap(); 
         commands.entity(entity).remove::<Tail>();
         let texture_handle = asset_server.load("HK-Heightend Sensory Input v2/HSI - Icons/HSI - Icon Geometric Light/HSI_icon_123l.png");
@@ -466,6 +486,7 @@ fn head_crumple_collision(
     for (entity_head, hex_head, body) in head_query.iter() {
         for (crumple_entity, hex_crumple) in crumple_query.iter() {
             if hex_head.q == hex_crumple.q && hex_head.r == hex_crumple.r {
+                info!("head crumple collision detected");
                 commands.entity(crumple_entity).despawn();
                 spawn_segment.send(SpawnSegment(entity_head, *body.0.last().unwrap()));
                 spawn_crumple.send(SpawnCrumple());
